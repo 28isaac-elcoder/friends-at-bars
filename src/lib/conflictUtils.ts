@@ -1,3 +1,5 @@
+import { CheckIn } from "@/types/checkin";
+
 // Example usage:
 // If user has check-in: "Bar A" from 7:30 PM to 9:30 PM
 // And then checks in: "Bar B" from 6:30 PM to 8:00 PM

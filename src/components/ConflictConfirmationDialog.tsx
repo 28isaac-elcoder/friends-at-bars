@@ -55,7 +55,7 @@ export default function ConflictConfirmationDialog({
             <h3 className="font-semibold text-foreground">
               Conflicting Check-ins:
             </h3>
-            {adjustments.map((adjustment, index) => (
+            {adjustments.map((adjustment) => (
               <div
                 key={adjustment.original.id}
                 className="rounded-lg border p-4"
