@@ -25,7 +25,6 @@ export const generateStartTimeOptions = (): string[] => {
 
   while (hour < 26) {
     // 2 AM next day = 26 hours from midnight
-    const displayHour = hour > 23 ? hour - 24 : hour;
     const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
     options.push(timeString);
 
