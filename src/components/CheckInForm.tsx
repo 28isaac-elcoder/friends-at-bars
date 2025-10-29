@@ -12,12 +12,14 @@ import {
   formatTimeDisplay,
 } from "@/lib/timeUtils";
 import { checkInService } from "@/lib/supabaseClient";
+import { addUserCheckInId } from "@/lib/userCheckIns";
 
 interface CheckInFormProps {
   onSubmit: (checkIn: CheckInFormData) => void;
+  onSuccess?: () => void; // Optional callback after successful Supabase save
 }
 
-export default function CheckInForm({ onSubmit }: CheckInFormProps) {
+export default function CheckInForm({ onSubmit, onSuccess }: CheckInFormProps) {
   const [venue, setVenue] = useState("");
   const [startTime, setStartTime] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("");
@@ -66,11 +68,16 @@ export default function CheckInForm({ onSubmit }: CheckInFormProps) {
       );
 
       // Save to Supabase
-      await checkInService.insertCheckIn({
+      const result = await checkInService.insertCheckIn({
         venue,
         start_time: startTime,
         end_time: calculatedEndTime,
       });
+
+      // Track this check-in as created by this user
+      if (result && result.id) {
+        addUserCheckInId(result.id);
+      }
 
       // Also call the local onSubmit for immediate UI update
       onSubmit({
@@ -78,6 +85,11 @@ export default function CheckInForm({ onSubmit }: CheckInFormProps) {
         startTime,
         durationMinutes: parseInt(durationMinutes),
       });
+
+      // Call success callback to reload data
+      if (onSuccess) {
+        onSuccess();
+      }
 
       // Reset form
       setVenue("");

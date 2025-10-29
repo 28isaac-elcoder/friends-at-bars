@@ -16,9 +16,11 @@ import {
 } from "@/lib/conflictUtils";
 import { checkInService } from "@/lib/supabaseClient";
 import { OHIO_STATE_VENUES } from "@/data/venues";
+import { getUserCheckInIds } from "@/lib/userCheckIns";
 
 export default function Home() {
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [checkIns, setCheckIns] = useState<CheckIn[]>([]); // All check-ins (for map)
+  const [userCheckIns, setUserCheckIns] = useState<CheckIn[]>([]); // User's own check-ins (for list)
   const [pendingCheckIn, setPendingCheckIn] = useState<CheckIn | null>(null);
   const [conflictingCheckIns, setConflictingCheckIns] = useState<CheckIn[]>([]);
   const [adjustments, setAdjustments] = useState<
@@ -26,46 +28,57 @@ export default function Home() {
   >([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
 
+  // Function to load check-ins from Supabase
+  const loadCheckIns = async () => {
+    try {
+      const supabaseData = await checkInService.fetchCheckIns();
+
+      // Convert Supabase check-ins to local CheckIn format
+      const convertedCheckIns: CheckIn[] = supabaseData.map(
+        (supabaseCheckIn: SupabaseCheckIn) => {
+          // Extract time strings from timestamps (handles both timestamp and HH:MM formats)
+          const startTime = extractTimeFromTimestamp(
+            supabaseCheckIn.start_time
+          );
+          const endTime = extractTimeFromTimestamp(supabaseCheckIn.end_time);
+
+          // Calculate duration properly (handles overnight)
+          const durationMinutes = calculateTimeDifference(startTime, endTime);
+
+          const venue = OHIO_STATE_VENUES.find(
+            (v) => v.name === supabaseCheckIn.venue
+          );
+
+          return {
+            id: supabaseCheckIn.id,
+            venue: supabaseCheckIn.venue,
+            venueArea: venue?.area,
+            startTime: startTime,
+            endTime: endTime,
+            durationMinutes,
+            timestamp: new Date(supabaseCheckIn.created_at),
+          };
+        }
+      );
+
+      // Get user's check-in IDs from localStorage
+      const userCheckInIds = getUserCheckInIds();
+
+      // Set all check-ins (for map)
+      setCheckIns(convertedCheckIns);
+
+      // Filter to only user's check-ins (for list)
+      const userOwnCheckIns = convertedCheckIns.filter((checkIn) =>
+        userCheckInIds.includes(checkIn.id)
+      );
+      setUserCheckIns(userOwnCheckIns);
+    } catch (error) {
+      console.error("Error loading check-ins from Supabase:", error);
+    }
+  };
+
   // Fetch check-ins from Supabase on page load
   useEffect(() => {
-    const loadCheckIns = async () => {
-      try {
-        const supabaseData = await checkInService.fetchCheckIns();
-
-        // Convert Supabase check-ins to local CheckIn format
-        const convertedCheckIns: CheckIn[] = supabaseData.map(
-          (supabaseCheckIn: SupabaseCheckIn) => {
-            // Extract time strings from timestamps (handles both timestamp and HH:MM formats)
-            const startTime = extractTimeFromTimestamp(
-              supabaseCheckIn.start_time
-            );
-            const endTime = extractTimeFromTimestamp(supabaseCheckIn.end_time);
-
-            // Calculate duration properly (handles overnight)
-            const durationMinutes = calculateTimeDifference(startTime, endTime);
-
-            const venue = OHIO_STATE_VENUES.find(
-              (v) => v.name === supabaseCheckIn.venue
-            );
-
-            return {
-              id: supabaseCheckIn.id,
-              venue: supabaseCheckIn.venue,
-              venueArea: venue?.area,
-              startTime: startTime,
-              endTime: endTime,
-              durationMinutes,
-              timestamp: new Date(supabaseCheckIn.created_at),
-            };
-          }
-        );
-
-        setCheckIns(convertedCheckIns);
-      } catch (error) {
-        console.error("Error loading check-ins from Supabase:", error);
-      }
-    };
-
     loadCheckIns();
   }, []);
 
@@ -139,12 +152,12 @@ export default function Home() {
 
       {/* Check-in Form */}
       <div className="mb-8">
-        <CheckInForm onSubmit={handleCheckInSubmit} />
+        <CheckInForm onSubmit={handleCheckInSubmit} onSuccess={loadCheckIns} />
       </div>
 
-      {/* Check-in List */}
+      {/* Check-in List - Only user's own check-ins */}
       <div className="mb-8">
-        <CheckInList checkIns={checkIns} />
+        <CheckInList checkIns={userCheckIns} />
       </div>
 
       {/* Conflict Confirmation Dialog */}

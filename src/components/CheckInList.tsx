@@ -37,11 +37,11 @@ export default function CheckInList({ checkIns }: CheckInListProps) {
     return (
       <Card className="mx-auto w-full max-w-2xl">
         <CardHeader>
-          <CardTitle>Recent Check-ins</CardTitle>
+          <CardTitle>My Check-ins</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="py-8 text-center text-muted-foreground">
-            No check-ins yet. Be the first to plan your night!
+            No check-ins yet. Select a venue to get started!
           </p>
         </CardContent>
       </Card>
@@ -51,7 +51,7 @@ export default function CheckInList({ checkIns }: CheckInListProps) {
   return (
     <Card className="mx-auto w-full max-w-2xl">
       <CardHeader>
-        <CardTitle>Recent Check-ins</CardTitle>
+        <CardTitle>My Check-ins</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
