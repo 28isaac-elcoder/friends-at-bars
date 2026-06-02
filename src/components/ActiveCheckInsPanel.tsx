@@ -22,6 +22,8 @@ import {
   isCheckInActiveAt,
 } from "@/lib/timeUtils";
 import { cn } from "@/lib/utils";
+import BarDealsCarousel from "@/components/BarDealsCarousel";
+import { getActivitiesCarouselDeals } from "@/data/dealsAndEvents";
 
 interface ActiveCheckInsPanelProps {
   checkIns: CheckIn[];
@@ -45,6 +47,8 @@ interface ActiveCheckInsPanelProps {
   liveVenueCounts?: Record<string, number> | null;
   /** When true, hide all attendance-style counts (area + venue); still list venues when expanded. */
   hideAttendanceBadges?: boolean;
+  /** When true (default on Activities), show rotating bar deals under date/time. */
+  showBarDeals?: boolean;
 }
 
 const formatDateValue = (date: Date) => format(date, "yyyy-MM-dd");
@@ -64,6 +68,7 @@ export default function ActiveCheckInsPanel({
   showLiveViewerCounts = false,
   liveVenueCounts = null,
   hideAttendanceBadges = false,
+  showBarDeals = false,
 }: ActiveCheckInsPanelProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [expandedAreas, setExpandedAreas] = useState<Set<string>>(new Set());
@@ -129,6 +134,11 @@ export default function ActiveCheckInsPanel({
 
   const liveMode = Boolean(
     showLiveViewerCounts && liveVenueCounts !== null && !hideAttendanceBadges
+  );
+
+  const barDealsForDate = useMemo(
+    () => (showBarDeals ? getActivitiesCarouselDeals(selectedDate) : []),
+    [showBarDeals, selectedDate]
   );
 
   const venuesInAreaSorted = (area: string) =>
@@ -244,6 +254,10 @@ export default function ActiveCheckInsPanel({
       ) : (
         dateTimeRow
       )}
+
+      {showBarDeals && !hideCheckInsList && barDealsForDate.length > 0 ? (
+        <BarDealsCarousel deals={barDealsForDate} />
+      ) : null}
 
       {!hideCheckInsList && (
         <div className="border-t border-gray-200 pt-2 flex-1 min-h-0 flex flex-col overflow-hidden">

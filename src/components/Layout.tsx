@@ -24,6 +24,7 @@ export default function Layout() {
   const pathname = location.pathname;
   const { immersive } = useGameImmersive();
   const isActivities = pathname === "/";
+  const isDeals = pathname === "/deals";
   const isMap = pathname === "/map";
   const isLog = pathname === "/log";
   const isGames = pathname === "/games" || pathname.startsWith("/games/");
@@ -35,11 +36,12 @@ export default function Layout() {
   /** Hide bottom bar during Switch Search gameplay / end, or on Mega Toe (full screen). */
   const showBottomNav =
     isActivities ||
+    isDeals ||
     isMap ||
     isLog ||
     (isGames && !(isSwitchSearch && immersive) && !isMegaToe && !isRideTheBus);
   const fullHeightMain =
-    isActivities || isMap || isLog || isSwitchSearch || isMegaToe || isRideTheBus;
+    isActivities || isDeals || isMap || isLog || isSwitchSearch || isMegaToe || isRideTheBus;
 
   const bottomNavPad = "calc(3.5rem + var(--safe-area-inset-bottom))";
   const immersiveShell = shellHeightImmersive();

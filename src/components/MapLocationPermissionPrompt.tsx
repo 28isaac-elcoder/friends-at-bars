@@ -1,7 +1,7 @@
 import { MapPinned } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
-export type LocationPermissionPromptVariant = "launch" | "map";
+export type LocationPermissionPromptVariant = "launch" | "map" | "ranked";
 
 export interface MapLocationPermissionPromptProps {
   open: boolean;
@@ -26,6 +26,10 @@ const COPY: Record<LocationPermissionPromptVariant, { description: string }> = {
   map: {
     description:
       "Enable location to browse attendance and deals at your favorite bars.",
+  },
+  ranked: {
+    description:
+      "Ranked runs can only be started at a participating bar. We use your location to verify you are at the venue.",
   },
 };
 

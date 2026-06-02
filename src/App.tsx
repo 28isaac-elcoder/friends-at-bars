@@ -8,6 +8,7 @@ import { LocationTrackingProvider } from "./contexts/LocationTrackingProvider";
 const Activities = lazy(() => import("./pages/Activities"));
 const MapPage = lazy(() => import("./pages/MapPage"));
 const Test = lazy(() => import("./pages/Test"));
+const DealsEvents = lazy(() => import("./pages/DealsEvents"));
 const Games = lazy(() => import("./pages/Games"));
 const SwitchSearch = lazy(() => import("./pages/SwitchSearch"));
 const MegaToe = lazy(() => import("./pages/MegaToe"));
@@ -64,6 +65,14 @@ function App() {
                 element={
                   <Suspense fallback={<LoadingFallback />}>
                     <LogPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="deals"
+                element={
+                  <Suspense fallback={<LoadingFallback />}>
+                    <DealsEvents />
                   </Suspense>
                 }
               />

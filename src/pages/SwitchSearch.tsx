@@ -8,6 +8,14 @@ import {
   shellHeightImmersive,
   shellHeightWithBottomNav,
 } from "@/constants/layoutHeights";
+import {
+  RankedGate,
+  RankedLeaderboard,
+  submitRankedScore,
+  useRankedEntry,
+} from "@/features/ranked";
+
+type PlayMode = "casual" | "ranked";
 
 type View = "homescreen" | "game" | "end";
 type Difficulty = "easy" | "hard";
@@ -79,6 +87,20 @@ const SwitchSearch = () => {
     b: number;
   }>(WHITE_RGB);
   const [isTimeFrozen, setIsTimeFrozen] = useState(false);
+  const [playMode, setPlayMode] = useState<PlayMode>("casual");
+  const rankedVenueRef = useRef<string | null>(null);
+  const rankedSubmittedRef = useRef(false);
+  const startGameRef = useRef<() => void>(() => {});
+
+  const ranked = useRankedEntry({
+    gameType: "switch-search",
+    onStartPlay: (venueName) => {
+      rankedVenueRef.current = venueName;
+      rankedSubmittedRef.current = false;
+      setPlayMode("ranked");
+      startGameRef.current();
+    },
+  });
 
   const gameTimeLimit = difficulty === "easy" ? 42 : 56;
   const gameDuration = difficulty === "easy" ? 12 : 16;
@@ -726,6 +748,8 @@ const SwitchSearch = () => {
     generateWordSearch();
   }, [gameTimeLimit, gameDuration, generateWordSearch]);
 
+  startGameRef.current = startGame;
+
   // Restart game
   const restartGame = useCallback(() => {
     if (freezeTimeoutRef.current) {
@@ -749,9 +773,40 @@ const SwitchSearch = () => {
 
   // Exit to homescreen
   const exitToHomescreen = useCallback(() => {
+    setPlayMode("casual");
+    rankedVenueRef.current = null;
+    rankedSubmittedRef.current = false;
     setView("homescreen");
     resetSelection();
   }, [resetSelection]);
+
+  useEffect(() => {
+    if (view !== "end" || playMode !== "ranked" || rankedSubmittedRef.current) {
+      return;
+    }
+    const venue = rankedVenueRef.current;
+    if (!venue) return;
+
+    rankedSubmittedRef.current = true;
+    void (async () => {
+      await submitRankedScore(ranked.userId, {
+        gameType: "switch-search",
+        venueName: venue,
+        wordsFound: totalFoundWords,
+        timeLeft,
+      });
+      setPlayMode("casual");
+      rankedVenueRef.current = null;
+      await ranked.showLeaderboardAfterSubmit();
+    })();
+  }, [
+    view,
+    playMode,
+    totalFoundWords,
+    timeLeft,
+    ranked.userId,
+    ranked.showLeaderboardAfterSubmit,
+  ]);
 
   // Skip word search
   const skipWordSearch = useCallback(() => {
@@ -923,16 +978,53 @@ const SwitchSearch = () => {
   const homescreenShellHeight = shellHeightWithBottomNav();
   const immersiveShellHeight = shellHeightImmersive();
 
+  if (ranked.screen === "leaderboard") {
+    return (
+      <RankedLeaderboard
+        gameType="switch-search"
+        entries={ranked.leaderboardEntries}
+        userId={ranked.userId}
+        loading={ranked.leaderboardLoading}
+        onBack={() => {
+          ranked.closeLeaderboard();
+          setView("homescreen");
+        }}
+      />
+    );
+  }
+
+  const rankedOverlays = (
+    <>
+      <RankedGate
+        overlay={ranked.gateOverlay}
+        onClose={ranked.closeGate}
+        onAllowLocation={ranked.handleAllowLocation}
+        locationBusy={ranked.locationBusy}
+        showWebLocationHelp={ranked.showWebLocationHelp}
+      />
+      {ranked.isChecking && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/80 text-sm text-white"
+          aria-busy="true"
+        >
+          Loading…
+        </div>
+      )}
+    </>
+  );
+
   // Render homescreen - fits one screen, no scroll
   if (view === "homescreen") {
     return (
-      <div
-        className="flex h-full flex-col overflow-hidden px-4"
-        style={{
-          height: homescreenShellHeight,
-          backgroundColor: theme.bg,
-        }}
-      >
+      <>
+        {rankedOverlays}
+        <div
+          className="flex h-full flex-col overflow-hidden px-4"
+          style={{
+            height: homescreenShellHeight,
+            backgroundColor: theme.bg,
+          }}
+        >
         <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col items-center justify-center gap-2 text-center md:gap-4">
           <h1
             className="text-4xl font-bold md:text-6xl"
@@ -980,6 +1072,19 @@ const SwitchSearch = () => {
               Start Game
             </Button>
             <Button
+              onClick={() => void ranked.handleRankedClick()}
+              size="lg"
+              variant="outline"
+              className="w-full text-base md:text-lg"
+              style={{
+                borderColor: theme.fg,
+                color: theme.fg,
+                backgroundColor: "transparent",
+              }}
+            >
+              Ranked
+            </Button>
+            <Button
               onClick={() => navigate("/games")}
               variant="outline"
               size="lg"
@@ -1001,7 +1106,8 @@ const SwitchSearch = () => {
         >
           © 2026 Inter Amicos
         </p>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -1009,27 +1115,36 @@ const SwitchSearch = () => {
   if (view === "end") {
     const wordCountMessage = totalFoundWords === 1 ? "word" : "words";
     return (
-      <div
-        className="flex flex-col overflow-hidden px-4"
-        style={{
-          height: immersiveShellHeight,
-          backgroundColor: theme.bg,
-        }}
-      >
+      <>
+        {rankedOverlays}
+        <div
+          className="flex flex-col overflow-hidden px-4"
+          style={{
+            height: immersiveShellHeight,
+            backgroundColor: theme.bg,
+          }}
+        >
         <div className="flex flex-1 flex-col items-center justify-center">
           <div className="w-full max-w-2xl text-center">
             <h1 className="mb-4 text-2xl font-bold md:mb-6 md:text-3xl" style={{ color: theme.fg }}>
               Time is up! You found {totalFoundWords} {wordCountMessage}.
             </h1>
+            {playMode === "ranked" && (
+              <p className="mb-4 text-sm md:text-base" style={{ color: theme.fg }}>
+                Saving your ranked score…
+              </p>
+            )}
             <div className="flex flex-col gap-3 md:gap-4">
-              <Button
-                onClick={restartGame}
-                size="lg"
-                className="w-full border-0"
-                style={{ backgroundColor: theme.fg, color: theme.bg }}
-              >
-                Restart
-              </Button>
+              {playMode !== "ranked" && (
+                <Button
+                  onClick={restartGame}
+                  size="lg"
+                  className="w-full border-0"
+                  style={{ backgroundColor: theme.fg, color: theme.bg }}
+                >
+                  Restart
+                </Button>
+              )}
               <Button
                 onClick={exitToHomescreen}
                 variant="outline"
@@ -1052,7 +1167,8 @@ const SwitchSearch = () => {
         >
           © 2026 Inter Amicos
         </p>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -1062,6 +1178,7 @@ const SwitchSearch = () => {
 
   return (
     <>
+      {rankedOverlays}
       <style>{`
         .easy-hint-character {
           margin: 2px;
@@ -1249,18 +1366,20 @@ const SwitchSearch = () => {
             >
               Skip
             </Button>
-            <Button
-              onClick={restartGame}
-              variant="outline"
-              className="px-2 py-1.5 text-xs md:px-4 md:py-2 md:text-sm"
-              style={{
-                borderColor: theme.fg,
-                color: theme.fg,
-                backgroundColor: "transparent",
-              }}
-            >
-              Restart
-            </Button>
+            {playMode !== "ranked" && (
+              <Button
+                onClick={restartGame}
+                variant="outline"
+                className="px-2 py-1.5 text-xs md:px-4 md:py-2 md:text-sm"
+                style={{
+                  borderColor: theme.fg,
+                  color: theme.fg,
+                  backgroundColor: "transparent",
+                }}
+              >
+                Restart
+              </Button>
+            )}
             <Button
               onClick={exitToHomescreen}
               variant="outline"

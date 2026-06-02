@@ -320,6 +320,7 @@ export default function Activities() {
             showLiveViewerCounts={attendanceUnlocked && isLiveNow}
             liveVenueCounts={liveVenueCounts}
             hideAttendanceBadges={!attendanceUnlocked}
+            showBarDeals
             endSlot={
               checkInOverlayOpen ? undefined : (
                 <button

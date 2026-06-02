@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { List, MapPin, Gamepad2, ScrollText } from "lucide-react";
+import { List, MapPin, Gamepad2, ScrollText, Ticket } from "lucide-react";
 import { useTestMode } from "@/contexts/TestModeContext";
 import { ENABLE_DEV_TEST_MODE_UI } from "@/config/devTestMode";
 
@@ -10,6 +10,7 @@ export default function BottomNav() {
   const { useMockCheckIns, setUseMockCheckIns } = useTestMode();
 
   const isActivities = pathname === "/";
+  const isDeals = pathname === "/deals";
   const isGames = pathname === "/games" || pathname.startsWith("/games/");
   const isMap = pathname === "/map";
   const isLog = pathname === "/log";
@@ -29,6 +30,16 @@ export default function BottomNav() {
         >
           <List className="h-5 w-5" />
           <span>Activities</span>
+        </Link>
+        <Link
+          to="/deals"
+          className={cn(
+            "flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium transition-colors sm:px-4",
+            isDeals ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Ticket className="h-5 w-5" />
+          <span className="max-w-[4.5rem] text-center leading-tight">Deals</span>
         </Link>
         {ENABLE_DEV_TEST_MODE_UI ? (
           <button

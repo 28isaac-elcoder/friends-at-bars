@@ -1,8 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { RideTheBusGameBoard } from "@/components/rideTheBus/RideTheBusGameBoard";
 import { shellHeightImmersive } from "@/constants/layoutHeights";
+import {
+  RankedGate,
+  RankedLeaderboard,
+  submitRankedScore,
+  useRankedEntry,
+} from "@/features/ranked";
 import {
   applyGuess,
   dismissWinModal,
@@ -16,9 +22,8 @@ import {
   type Suit,
 } from "@/lib/rideTheBus";
 
-// Future: venue PvP + bar deal redemption
-
 type View = "lobby" | "rules" | "game";
+type PlayMode = "casual" | "ranked";
 
 const RULES_COPY = (
   <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
@@ -66,20 +71,72 @@ const SUITS: { suit: Suit; label: string }[] = [
 export default function RideTheBus() {
   const navigate = useNavigate();
   const [view, setView] = useState<View>("lobby");
+  const [playMode, setPlayMode] = useState<PlayMode>("casual");
   const [state, setState] = useState<RideTheBusState>(() => initialState());
+  const rankedVenueRef = useRef<string | null>(null);
+  const rankedSubmittedRef = useRef(false);
+  const beginGameRef = useRef<() => void>(() => {});
+
+  const ranked = useRankedEntry({
+    gameType: "ride-the-bus",
+    onStartPlay: (venueName) => {
+      rankedVenueRef.current = venueName;
+      rankedSubmittedRef.current = false;
+      setPlayMode("ranked");
+      beginGameRef.current();
+    },
+  });
 
   const beginGame = useCallback(() => {
     setState(startRun(initialState()));
     setView("game");
   }, []);
 
+  beginGameRef.current = beginGame;
+
   const restartGame = useCallback(() => {
     setState(startRun(initialState()));
   }, []);
 
+  const submitRankedRun = useCallback(
+    async (completed: boolean, drinkCount: number) => {
+      const venue = rankedVenueRef.current;
+      if (!venue || rankedSubmittedRef.current) return;
+      rankedSubmittedRef.current = true;
+      await submitRankedScore(ranked.userId, {
+        gameType: "ride-the-bus",
+        venueName: venue,
+        drinkCount,
+        completed,
+      });
+      setPlayMode("casual");
+      rankedVenueRef.current = null;
+      await ranked.showLeaderboardAfterSubmit();
+    },
+    [ranked.userId, ranked.showLeaderboardAfterSubmit]
+  );
+
+  useEffect(() => {
+    if (playMode !== "ranked" || state.modal !== "win" || rankedSubmittedRef.current) {
+      return;
+    }
+    void submitRankedRun(true, state.drinkCount);
+  }, [playMode, state.modal, state.drinkCount, submitRankedRun]);
+
   const handleGuess = useCallback((guess: Guess) => {
     setState((prev) => applyGuess(prev, guess));
   }, []);
+
+  const exitRankedSession = useCallback(() => {
+    if (playMode === "ranked" && !rankedSubmittedRef.current) {
+      void submitRankedRun(false, state.drinkCount);
+    } else {
+      setPlayMode("casual");
+      rankedVenueRef.current = null;
+      rankedSubmittedRef.current = false;
+      setView("lobby");
+    }
+  }, [playMode, state.drinkCount, submitRankedRun]);
 
   const canGuess =
     state.modal === "none" &&
@@ -99,37 +156,87 @@ export default function RideTheBus() {
         ? "Make your guess"
         : "Card revealed";
 
+  const rankedOverlays = (
+    <>
+      <RankedGate
+        overlay={ranked.gateOverlay}
+        onClose={ranked.closeGate}
+        onAllowLocation={ranked.handleAllowLocation}
+        locationBusy={ranked.locationBusy}
+        showWebLocationHelp={ranked.showWebLocationHelp}
+      />
+      {ranked.isChecking && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/80 text-sm text-white"
+          aria-busy="true"
+        >
+          Loading…
+        </div>
+      )}
+    </>
+  );
+
+  if (ranked.screen === "leaderboard") {
+    return (
+      <>
+        {rankedOverlays}
+        <RankedLeaderboard
+          gameType="ride-the-bus"
+          entries={ranked.leaderboardEntries}
+          userId={ranked.userId}
+          loading={ranked.leaderboardLoading}
+          onBack={() => {
+            ranked.closeLeaderboard();
+            setView("lobby");
+            setState(initialState());
+          }}
+        />
+      </>
+    );
+  }
+
   if (view === "lobby") {
     return (
-      <div
-        className="flex flex-col overflow-hidden px-4"
-        style={{ height: shellH }}
-      >
-        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-8">
-          <h1 className="text-3xl font-bold text-foreground">Ride the Bus</h1>
-          <div className="flex flex-col gap-3">
-            <Button size="lg" className="w-full" onClick={beginGame}>
-              Play
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full"
-              onClick={() => setView("rules")}
-            >
-              Rules
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full"
-              onClick={() => navigate("/games")}
-            >
-              Exit
-            </Button>
+      <>
+        {rankedOverlays}
+        <div
+          className="flex flex-col overflow-hidden px-4"
+          style={{ height: shellH }}
+        >
+          <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-8">
+            <h1 className="text-3xl font-bold text-foreground">Ride the Bus</h1>
+            <div className="flex flex-col gap-3">
+              <Button size="lg" className="w-full" onClick={beginGame}>
+                Play
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => void ranked.handleRankedClick()}
+              >
+                Ranked
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => setView("rules")}
+              >
+                Rules
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate("/games")}
+              >
+                Exit
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -152,8 +259,12 @@ export default function RideTheBus() {
     );
   }
 
+  const isRankedWin =
+    playMode === "ranked" && state.modal === "win" && rankedSubmittedRef.current;
+
   return (
     <>
+      {rankedOverlays}
       {state.modal === "win" && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -169,29 +280,33 @@ export default function RideTheBus() {
               You rode the bus!
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              All four rounds correct. Nice run.
+              {playMode === "ranked"
+                ? "All four rounds correct. Saving your ranked score…"
+                : "All four rounds correct. Nice run."}
             </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <Button
-                className="w-full"
-                onClick={() => {
-                  setState(startRun(dismissWinModal()));
-                  setView("game");
-                }}
-              >
-                Play again
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  setState(dismissWinModal());
-                  setView("lobby");
-                }}
-              >
-                Back to lobby
-              </Button>
-            </div>
+            {playMode !== "ranked" && (
+              <div className="mt-4 flex flex-col gap-2">
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    setState(startRun(dismissWinModal()));
+                    setView("game");
+                  }}
+                >
+                  Play again
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setState(dismissWinModal());
+                    setView("lobby");
+                  }}
+                >
+                  Back to lobby
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -217,7 +332,7 @@ export default function RideTheBus() {
             </p>
             <PromptButtons
               round={state.round}
-              disabled={!canGuess}
+              disabled={!canGuess || isRankedWin}
               onColor={(v) => handleGuess({ round: 0, value: v })}
               onCompare={(v) => handleGuess({ round: 1, value: v })}
               onRange={(v) => handleGuess({ round: 2, value: v })}
@@ -237,21 +352,29 @@ export default function RideTheBus() {
             >
               Rules
             </Button>
+            {playMode !== "ranked" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-0 flex-1 px-2 sm:px-3"
+                onClick={restartGame}
+              >
+                Restart
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
               className="min-w-0 flex-1 px-2 sm:px-3"
-              onClick={restartGame}
+              onClick={() => {
+                if (playMode === "ranked") {
+                  exitRankedSession();
+                } else {
+                  navigate("/games");
+                }
+              }}
             >
-              Restart
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-w-0 flex-1 px-2 sm:px-3"
-              onClick={() => navigate("/games")}
-            >
-              Exit
+              {playMode === "ranked" ? "Exit ranked" : "Exit"}
             </Button>
           </nav>
         </div>
