@@ -1,6 +1,12 @@
 workflows:
   ios-workflow:
-    name: iOS Build and Deploy
+    name: iOS Build and Deploy (Production)
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
     integrations:
       app_store_connect: bar_fest_apple_api
     max_build_duration: 120
@@ -34,13 +40,13 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
+      - name: Increment iOS build number
+        script: |
+          chmod +x scripts/increment-ios-build-number.sh
+          ./scripts/increment-ios-build-number.sh
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles
-          # Alternative: xcode-project run-target $XCODE_SCHEME build \
-          #   CODE_SIGN_IDENTITY="" \
-          #   CODE_SIGNING_REQUIRED=NO \
-          #   CODE_SIGNING_ALLOWED=NO
       - name: Build IPA
         script: |
           xcode-project build-ipa \
@@ -60,9 +66,74 @@ workflows:
           failure: false
       app_store_connect:
         auth: integration
-        # Upload to TestFlight so you can use external testers (submit for Beta App Review in App Store Connect, then add testers).
         submit_to_testflight: true
-        # Optional: uncomment and add your group name to assign build after beta review.
-        # beta_groups:
-        #   - BF Bar Fest Testers
+        submit_to_app_store: false
+
+  ios-test-workflow:
+    name: iOS Build and Deploy (Bar Fest Test)
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: Test
+          include: true
+    integrations:
+      app_store_connect: bar_fest_test_apple_api
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+    environment:
+      groups:
+        - bar_fest_distribution
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.barfest.app.test
+      vars:
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        BUNDLE_ID: "com.barfest.app.test"
+        APP_ID: "6776871909"
+      node: 22.18.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+      - name: Apply test Capacitor config
+        script: |
+          node scripts/apply-capacitor-config.mjs test
+      - name: Build web app
+        script: |
+          if [ -z "$VITE_MAPKIT_TOKEN" ]; then echo "Note: VITE_MAPKIT_TOKEN is not set — native iOS map still works; MapKit JS (web) needs a token at runtime."; fi
+          npm run build
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap sync ios
+      - name: Increment iOS build number
+        script: |
+          chmod +x scripts/increment-ios-build-number.sh
+          ./scripts/increment-ios-build-number.sh
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - user@example.com # Update with your email
+        notify:
+          success: true
+          failure: false
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
         submit_to_app_store: false

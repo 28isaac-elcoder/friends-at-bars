@@ -223,6 +223,28 @@ npm run cap:build:ios
 - [Apple Developer Documentation](https://developer.apple.com/documentation/)
 - [App Store Connect Help](https://help.apple.com/app-store-connect/)
 
+## Bar Fest Test (staging)
+
+| | Production | Bar Fest Test |
+|---|---|---|
+| Git branch | `main` | `Test` |
+| Codemagic workflow | `ios-workflow` | `ios-test-workflow` |
+| Signing group | `bar_fest_distribution` | `bar_fest_distribution` (same; profile selected by bundle ID) |
+| Provisioning profile (Codemagic) | `bar_fest_mobileprovision_distribution` | `bar_fest_test_mobileprovision_distribution` |
+| Bundle ID | `com.barfest.app` | `com.barfest.app.test` |
+| App Store Connect app ID | `6759994494` | `6776871909` |
+| WebView URL | `https://friends-at-bars-two.vercel.app` | `https://bar-fest-test.vercel.app` |
+
+Before `cap sync` on the test workflow, CI runs `node scripts/apply-capacitor-config.mjs test`, which copies `capacitor.config.test.ts` → `capacitor.config.ts`. Production config is kept in `capacitor.config.production.ts` (mirror of prod); restore locally with `npm run cap:apply-config:production`.
+
+Local test sync: `npm run cap:sync:ios:test`
+
+Optional: on the **bar-fest-test** Vercel project, set `VITE_APP_ENV=staging` to show a staging banner in the web UI.
+
+## iOS build numbers on Codemagic
+
+After `cap sync`, CI runs `scripts/increment-ios-build-number.sh`. It reads the latest `CFBundleVersion` from App Store Connect for the workflow’s `APP_ID` and sets `CURRENT_PROJECT_VERSION` in `project.pbxproj` to **that number + 1**, so uploads do not fail with “bundle version must be higher than the previously uploaded version.”
+
 ## Notes
 
 - The app uses MapLibre GL for maps (compatible with iOS)
