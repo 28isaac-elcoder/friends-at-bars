@@ -40,10 +40,6 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
-      - name: Increment iOS build number
-        script: |
-          chmod +x scripts/increment-ios-build-number.sh
-          ./scripts/increment-ios-build-number.sh
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles
@@ -109,10 +105,6 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
-      - name: Increment iOS build number
-        script: |
-          chmod +x scripts/increment-ios-build-number.sh
-          ./scripts/increment-ios-build-number.sh
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles

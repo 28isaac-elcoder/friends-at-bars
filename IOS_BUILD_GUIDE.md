@@ -241,9 +241,9 @@ Local test sync: `npm run cap:sync:ios:test`
 
 Optional: on the **bar-fest-test** Vercel project, set `VITE_APP_ENV=staging` to show a staging banner in the web UI.
 
-## iOS build numbers on Codemagic
+## iOS build numbers
 
-After `cap sync`, CI runs `scripts/increment-ios-build-number.sh`. It reads the latest `CFBundleVersion` from App Store Connect for the workflow’s `APP_ID` and sets `CURRENT_PROJECT_VERSION` in `project.pbxproj` to **that number + 1**, so uploads do not fail with “bundle version must be higher than the previously uploaded version.”
+Before each App Store / TestFlight upload, bump `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj` (Debug and Release) to a number **higher** than the latest build on App Store Connect for that app. `MARKETING_VERSION` is the user-facing version (e.g. `3`).
 
 ## Notes
 
