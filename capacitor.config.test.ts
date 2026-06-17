@@ -1,13 +1,12 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
-/** Production — keep in sync with capacitor.config.ts (source for prod CI). */
+/** Staging / Bar Fest Test — WebView loads bar-fest-test.vercel.app (Test branch). */
 const config: CapacitorConfig = {
-  appId: 'com.barfest.app',
-  appName: 'Bar Fest',
+  appId: 'com.barfest.app.test',
+  appName: 'Bar Fest Test',
   webDir: 'dist',
   server: {
-    /** Load WebView from Vercel so JS origin matches MapKit JS domain + OTA web updates. Comment out for offline/local-bundle testing. */
-    url: 'https://friends-at-bars-two.vercel.app',
+    url: 'https://bar-fest-test.vercel.app',
     androidScheme: 'https',
     iosScheme: 'https',
   },
