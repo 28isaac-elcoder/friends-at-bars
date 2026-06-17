@@ -239,6 +239,8 @@ Before `cap sync` on the test workflow, CI runs `node scripts/apply-capacitor-co
 
 Local test sync: `npm run cap:sync:ios:test`
 
+On test CI, after `cap sync`, `scripts/diagnose-ios-signing.sh` logs bundle IDs, profiles, and certs; `scripts/sync-ios-bundle-id.sh` sets `PRODUCT_BUNDLE_IDENTIFIER` to `com.barfest.app.test` before `use-profiles`.
+
 Optional: on the **bar-fest-test** Vercel project, set `VITE_APP_ENV=staging` to show a staging banner in the web UI.
 
 ## iOS build numbers

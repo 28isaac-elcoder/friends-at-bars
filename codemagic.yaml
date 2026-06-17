@@ -105,8 +105,17 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
+      - name: Diagnose iOS signing
+        script: |
+          chmod +x scripts/diagnose-ios-signing.sh
+          ./scripts/diagnose-ios-signing.sh
+      - name: Align Xcode bundle ID with workflow
+        script: |
+          chmod +x scripts/sync-ios-bundle-id.sh
+          ./scripts/sync-ios-bundle-id.sh
       - name: Set up code signing settings on Xcode project
         script: |
+          set -x
           xcode-project use-profiles
       - name: Build IPA
         script: |
