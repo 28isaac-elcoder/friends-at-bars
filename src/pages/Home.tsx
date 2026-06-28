@@ -25,7 +25,7 @@ import {
   adjustCheckInTimes,
 } from "@/lib/conflictUtils";
 import { checkInService } from "@/lib/supabaseClient";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { OHIO_STATE_VENUES, isVenueVisible } from "@/data/venues";
 import {
   addUserCheckInId,
   getUserCheckInIds,
@@ -208,7 +208,9 @@ export default function Home() {
   // Function to load check-ins from Supabase
   const loadCheckIns = async () => {
     try {
-      const supabaseData = await checkInService.fetchCheckIns();
+      const supabaseData = (await checkInService.fetchCheckIns()).filter(
+        (c: SupabaseCheckIn) => isVenueVisible(c.venue)
+      );
 
       const convertedCheckIns: CheckIn[] = supabaseData.map(
         (supabaseCheckIn: SupabaseCheckIn) => {

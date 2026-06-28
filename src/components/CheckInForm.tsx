@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Calendar } from "@/components/ui/Calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
 import { CheckInFormData } from "@/types/checkin";
-import { OHIO_STATE_VENUES, CAMPUS_AREAS } from "@/data/venues";
+import { VISIBLE_VENUES, VISIBLE_CAMPUS_AREAS } from "@/data/venues";
 import {
   getDynamicStartTime,
   generateStartTimeOptions,
@@ -48,8 +48,8 @@ export default function CheckInForm({ onSubmit, resetTrigger }: CheckInFormProps
   const durationOptions = generateDurationOptions(startTime);
 
   // Build dropdown options
-  const venueOptions: DropdownOption[] = CAMPUS_AREAS.flatMap((area) =>
-    OHIO_STATE_VENUES.filter((v) => v.area === area).map((v) => ({
+  const venueOptions: DropdownOption[] = VISIBLE_CAMPUS_AREAS.flatMap((area) =>
+    VISIBLE_VENUES.filter((v) => v.area === area).map((v) => ({
       label: v.name,
       value: v.name,
       group: area,

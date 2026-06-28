@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/Popover";
 import { CheckIn } from "@/types/checkin";
-import { CAMPUS_AREAS, OHIO_STATE_VENUES } from "@/data/venues";
+import { VISIBLE_CAMPUS_AREAS, VISIBLE_VENUES } from "@/data/venues";
 import {
   formatDateDisplay,
   formatTimeDisplay,
@@ -142,16 +142,16 @@ export default function ActiveCheckInsPanel({
   );
 
   const venuesInAreaSorted = (area: string) =>
-    OHIO_STATE_VENUES.filter((v) => v.area === area)
+    VISIBLE_VENUES.filter((v) => v.area === area)
       .map((v) => v.name)
       .sort((a, b) => a.localeCompare(b));
 
   type AreaData = { venues: Record<string, number>; total: number };
   const areaMap: Record<string, AreaData> = {};
-  for (const area of CAMPUS_AREAS) {
+  for (const area of VISIBLE_CAMPUS_AREAS) {
     areaMap[area] = { venues: {}, total: 0 };
   }
-  OHIO_STATE_VENUES.forEach((venue) => {
+  VISIBLE_VENUES.forEach((venue) => {
     if (!venue.area || !areaMap[venue.area]) return;
     const count = liveMode
       ? (liveVenueCounts![venue.name] ?? 0)
@@ -160,7 +160,9 @@ export default function ActiveCheckInsPanel({
     areaData.venues[venue.name] = count;
     areaData.total += count;
   });
-  const areaEntries = CAMPUS_AREAS.map((area) => [area, areaMap[area]] as const);
+  const areaEntries = VISIBLE_CAMPUS_AREAS.map(
+    (area) => [area, areaMap[area]] as const
+  );
 
   const toggleArea = (area: string) => {
     setExpandedAreas((prev) => {

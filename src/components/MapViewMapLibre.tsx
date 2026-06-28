@@ -3,7 +3,7 @@ import Map, { Marker, Popup } from "react-map-gl/maplibre";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CheckIn, VenueCounts } from "@/types/checkin";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { VISIBLE_VENUES } from "@/data/venues";
 import { isCheckInActiveAt } from "@/lib/timeUtils";
 import { locationService } from "@/lib/locationService";
 
@@ -68,7 +68,7 @@ export default function MapViewMapLibre({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCheckIns, liveCounts]);
 
-  const markers = OHIO_STATE_VENUES;
+  const markers = VISIBLE_VENUES;
 
   const createMarkerElement = () => {
     const size = 12;
@@ -104,7 +104,7 @@ export default function MapViewMapLibre({
     );
   };
 
-  const handleMarkerClick = (venue: (typeof OHIO_STATE_VENUES)[0]) => {
+  const handleMarkerClick = (venue: (typeof VISIBLE_VENUES)[0]) => {
     setPopupInfo({
       venue,
       checkIns: getVenueActivity(venue.name),

@@ -1,5 +1,5 @@
 import { CheckIn, SupabaseCheckIn } from "@/types/checkin";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { OHIO_STATE_VENUES, isVenueVisible } from "@/data/venues";
 import {
   extractTimeFromTimestamp,
   DEFAULT_START_TIME,
@@ -25,7 +25,9 @@ export async function fetchCheckInsForDisplay(
 export function convertSupabaseRowsToCheckIns(
   supabaseData: SupabaseCheckIn[]
 ): CheckIn[] {
-  const convertedCheckIns: CheckIn[] = supabaseData.map(
+  // Exclude check-ins for venues hidden in this build (e.g. Test Locations in production)
+  const visibleRows = supabaseData.filter((row) => isVenueVisible(row.venue));
+  const convertedCheckIns: CheckIn[] = visibleRows.map(
     (supabaseCheckIn: SupabaseCheckIn) => {
       const startFallbackTime =
         extractTimeFromTimestamp(

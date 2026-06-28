@@ -1,4 +1,5 @@
 import { Venue } from "@/types/checkin";
+import { isDevTestModeUiEnabled } from "@/config/devTestMode";
 
 export const OHIO_STATE_VENUES: Venue[] = [
   // North Campus
@@ -109,3 +110,34 @@ export const CAMPUS_AREAS = [
   "Grandview",
   "Test Locations",
 ] as const;
+
+/**
+ * Areas that only appear in test builds. They are shown and used only when
+ * the dev test mode UI is enabled (ENABLE_DEV_TEST_MODE_UI in config/devTestMode).
+ */
+export const TEST_AREAS: readonly string[] = ["Test Locations"];
+
+function isTestArea(area: string | undefined): boolean {
+  return area !== undefined && TEST_AREAS.includes(area);
+}
+
+/**
+ * Venues that are visible and usable in the current build.
+ * - Dev test mode enabled  → all venues (including Test Locations).
+ * - Dev test mode disabled → Test Locations hidden/excluded.
+ */
+export const VISIBLE_VENUES: Venue[] = isDevTestModeUiEnabled()
+  ? OHIO_STATE_VENUES
+  : OHIO_STATE_VENUES.filter((v) => !isTestArea(v.area));
+
+/** Areas to display, excluding Test Locations unless dev test mode is enabled. */
+export const VISIBLE_CAMPUS_AREAS: readonly string[] = isDevTestModeUiEnabled()
+  ? CAMPUS_AREAS
+  : CAMPUS_AREAS.filter((a) => !isTestArea(a));
+
+const VISIBLE_VENUE_NAMES = new Set(VISIBLE_VENUES.map((v) => v.name));
+
+/** True if a venue (by name) should be shown/used in the current build. */
+export function isVenueVisible(venueName: string): boolean {
+  return VISIBLE_VENUE_NAMES.has(venueName);
+}

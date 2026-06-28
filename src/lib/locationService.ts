@@ -18,7 +18,7 @@ import {
   isSupabaseNetworkError,
   wasSupabaseNetworkError,
 } from "./supabaseClient";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { VISIBLE_VENUES, isVenueVisible } from "@/data/venues";
 import {
   LIVE_LOCATION_MAX_AGE_MS,
   LIVE_LOCATION_STALE_MS,
@@ -285,7 +285,7 @@ function findNearestVenue(
   let closestMatch: VenueMatch | null = null;
   let minDistance = radiusMeters;
 
-  for (const venue of OHIO_STATE_VENUES) {
+  for (const venue of VISIBLE_VENUES) {
     const distance = calculateDistance(
       latitude,
       longitude,
@@ -1029,9 +1029,10 @@ export const locationService = {
       return {};
     }
 
-    // Count users per venue
+    // Count users per venue (skip venues hidden in this build, e.g. Test Locations)
     const counts: VenueCounts = {};
     data?.forEach((location) => {
+      if (!isVenueVisible(location.venue_name)) return;
       if (!counts[location.venue_name]) {
         counts[location.venue_name] = 0;
       }

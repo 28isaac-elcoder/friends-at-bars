@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { CheckIn, VenueCounts } from "@/types/checkin";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { VISIBLE_VENUES } from "@/data/venues";
 import { isCheckInActiveAt } from "@/lib/timeUtils";
 import { locationService } from "@/lib/locationService";
 import { loadMapKit } from "@/lib/mapkitLoader";
@@ -129,7 +129,7 @@ export default function MapViewMapKit({
         mapRef.current = map;
 
         const openVenuePopup = (venueName: string) => {
-          const venue = OHIO_STATE_VENUES.find((v) => v.name === venueName);
+          const venue = VISIBLE_VENUES.find((v) => v.name === venueName);
           if (!venue) return;
           if (
             !hasFiredFirstInteraction.current &&
@@ -145,7 +145,7 @@ export default function MapViewMapKit({
         };
 
         // Add annotations — use select on each annotation (MapKit JS event API)
-        for (const venue of OHIO_STATE_VENUES) {
+        for (const venue of VISIBLE_VENUES) {
           const c = new mapkit.Coordinate(
             venue.coordinates[0],
             venue.coordinates[1]

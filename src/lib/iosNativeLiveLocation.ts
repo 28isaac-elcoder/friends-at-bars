@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { BarFestNativeLiveLocation } from "capacitor-barfest-native-live-location";
-import { OHIO_STATE_VENUES } from "@/data/venues";
+import { VISIBLE_VENUES } from "@/data/venues";
 import {
   VENUE_LIVE_SUPABASE_HEARTBEAT_MS,
   VENUE_LOCATION_POLL_INTERVAL_MS,
@@ -81,7 +81,7 @@ export async function configureNativeLiveTracking(
   appendDiagnosticLog("native", "configure", {
     skipSupabase,
     userIdPrefix: userId.slice(0, 12),
-    venueCount: OHIO_STATE_VENUES.length,
+    venueCount: VISIBLE_VENUES.length,
     heartbeatMs: VENUE_LIVE_SUPABASE_HEARTBEAT_MS,
     pollIntervalMs: VENUE_LOCATION_POLL_INTERVAL_MS,
     hasSupabaseUrl: Boolean(url),
@@ -92,8 +92,8 @@ export async function configureNativeLiveTracking(
     supabaseUrl: url,
     supabaseAnonKey: key,
     userId,
-    venues: OHIO_STATE_VENUES,
-    venuesJson: JSON.stringify(OHIO_STATE_VENUES),
+    venues: VISIBLE_VENUES,
+    venuesJson: JSON.stringify(VISIBLE_VENUES),
     heartbeatMs: VENUE_LIVE_SUPABASE_HEARTBEAT_MS,
     pollIntervalMs: VENUE_LOCATION_POLL_INTERVAL_MS,
     venueRadiusMeters: VENUE_RADIUS_METERS,
