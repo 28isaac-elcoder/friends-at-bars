@@ -246,12 +246,16 @@ export default function MapPage() {
         setShowWebLocationHelp(false);
       } else if (granted) {
         setMapAllowed(true);
-        setShowWebLocationHelp(true);
-      } else {
+        if (!Capacitor.isNativePlatform()) {
+          setShowWebLocationHelp(true);
+        }
+      } else if (!Capacitor.isNativePlatform()) {
         setShowWebLocationHelp(true);
       }
     } catch {
-      setShowWebLocationHelp(true);
+      if (!Capacitor.isNativePlatform()) {
+        setShowWebLocationHelp(true);
+      }
     } finally {
       setLocationPromptBusy(false);
     }

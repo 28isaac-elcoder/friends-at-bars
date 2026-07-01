@@ -1,5 +1,10 @@
-import { useCallback, useState } from "react";
-import { locationService } from "@/lib/locationService";
+import { useCallback, useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { promptForOsLocationPermission } from "@/lib/ensureLiveLocationWhenPermitted";
+import {
+  locationService,
+  subscribeNativeAppResume,
+} from "@/lib/locationService";
 import type { RankedGateOverlay } from "./RankedGate";
 import {
   fetchLeaderboardToday,
@@ -25,6 +30,9 @@ export function useRankedEntry({ gameType, onStartPlay }: UseRankedEntryOptions)
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [locationBusy, setLocationBusy] = useState(false);
   const [showWebLocationHelp, setShowWebLocationHelp] = useState(false);
+  const [nativeSettingsError, setNativeSettingsError] = useState<string | null>(
+    null
+  );
   const [rankedVenueName, setRankedVenueName] = useState<string | null>(null);
 
   const openLeaderboard = useCallback(async () => {
@@ -68,10 +76,17 @@ export function useRankedEntry({ gameType, onStartPlay }: UseRankedEntryOptions)
   const handleAllowLocation = useCallback(async () => {
     setLocationBusy(true);
     setShowWebLocationHelp(false);
+    setNativeSettingsError(null);
     try {
-      const granted = await locationService.requestPermissions();
+      const { granted, settingsError } = await promptForOsLocationPermission();
+      if (settingsError) {
+        setNativeSettingsError(settingsError);
+        return;
+      }
       if (!granted) {
-        setShowWebLocationHelp(true);
+        if (!Capacitor.isNativePlatform()) {
+          setShowWebLocationHelp(true);
+        }
         return;
       }
       setGateOverlay("none");
@@ -81,9 +96,32 @@ export function useRankedEntry({ gameType, onStartPlay }: UseRankedEntryOptions)
     }
   }, [tryStartAtVenue]);
 
+  useEffect(() => {
+    if (gateOverlay !== "permission") return;
+
+    const recheckAfterSettings = async () => {
+      const granted = await locationService.checkPermissions();
+      if (!granted) return;
+      setShowWebLocationHelp(false);
+      setNativeSettingsError(null);
+      setGateOverlay("none");
+      await tryStartAtVenue();
+    };
+
+    window.addEventListener("focus", recheckAfterSettings);
+    const unsubResume = subscribeNativeAppResume(() => {
+      void recheckAfterSettings();
+    });
+    return () => {
+      window.removeEventListener("focus", recheckAfterSettings);
+      unsubResume();
+    };
+  }, [gateOverlay, tryStartAtVenue]);
+
   const closeGate = useCallback(() => {
     setGateOverlay("none");
     setShowWebLocationHelp(false);
+    setNativeSettingsError(null);
   }, []);
 
   const closeLeaderboard = useCallback(() => {
@@ -102,6 +140,7 @@ export function useRankedEntry({ gameType, onStartPlay }: UseRankedEntryOptions)
     leaderboardLoading,
     locationBusy,
     showWebLocationHelp,
+    nativeSettingsError,
     rankedVenueName,
     handleRankedClick,
     handleAllowLocation,

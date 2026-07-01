@@ -44,6 +44,52 @@ function usesNativeSettingsShortcut(): boolean {
 }
 
 /**
+ * Request OS location permission: opens app Settings on native iOS/Android when needed,
+ * or triggers the browser permission prompt on web.
+ */
+export async function promptForOsLocationPermission(): Promise<{
+  granted: boolean;
+  openedSettings: boolean;
+  settingsError: string | null;
+}> {
+  let granted = await locationService.checkPermissions();
+  if (granted) {
+    return { granted: true, openedSettings: false, settingsError: null };
+  }
+
+  if (usesNativeSettingsShortcut()) {
+    liveLocLog("promptForOsLocationPermission → open native Settings");
+    const settingsResult = await openNativeAppLocationSettings();
+    if (!settingsResult.ok) {
+      liveLocLog(
+        "promptForOsLocationPermission Settings open failed",
+        { detail: settingsResult.displayText },
+        "warn"
+      );
+      return {
+        granted: false,
+        openedSettings: false,
+        settingsError:
+          settingsResult.displayText ?? "Failed to open Settings",
+      };
+    }
+    granted = await locationService.checkPermissions();
+    return {
+      granted,
+      openedSettings: true,
+      settingsError: null,
+    };
+  }
+
+  granted = await locationService.requestPermissions();
+  return {
+    granted,
+    openedSettings: false,
+    settingsError: null,
+  };
+}
+
+/**
  * User tapped "enable location": open Settings on native if needed, then start live tracking
  * once permission is granted (including after returning from Settings).
  */

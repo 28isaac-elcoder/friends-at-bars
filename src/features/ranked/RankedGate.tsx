@@ -1,4 +1,5 @@
 import { MapPinned } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import MapLocationPermissionPrompt from "@/components/MapLocationPermissionPrompt";
 
 export type RankedGateOverlay = "none" | "permission" | "not-at-bar";
@@ -9,6 +10,7 @@ type RankedGateProps = {
   onAllowLocation: () => void | Promise<void>;
   locationBusy?: boolean;
   showWebLocationHelp?: boolean;
+  nativeSettingsError?: string | null;
 };
 
 export function RankedGate({
@@ -17,8 +19,13 @@ export function RankedGate({
   onAllowLocation,
   locationBusy = false,
   showWebLocationHelp = false,
+  nativeSettingsError = null,
 }: RankedGateProps) {
   if (overlay === "none") return null;
+
+  const nativeSettingsShortcut =
+    Capacitor.isNativePlatform() &&
+    (Capacitor.getPlatform() === "ios" || Capacitor.getPlatform() === "android");
 
   if (overlay === "permission") {
     return (
@@ -30,7 +37,9 @@ export function RankedGate({
         secondaryLabel="Back"
         busy={locationBusy}
         coverNav
+        nativeSettingsNote={nativeSettingsShortcut}
         showWebLocationHelp={showWebLocationHelp}
+        nativeSettingsError={nativeSettingsError}
       />
     );
   }

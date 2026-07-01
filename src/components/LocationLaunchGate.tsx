@@ -88,12 +88,16 @@ export default function LocationLaunchGate() {
         setShowWebLocationHelp(false);
       } else if (granted) {
         setOverlay("hidden");
-        setShowWebLocationHelp(true);
-      } else {
+        if (!Capacitor.isNativePlatform()) {
+          setShowWebLocationHelp(true);
+        }
+      } else if (!Capacitor.isNativePlatform()) {
         setShowWebLocationHelp(true);
       }
     } catch {
-      setShowWebLocationHelp(true);
+      if (!Capacitor.isNativePlatform()) {
+        setShowWebLocationHelp(true);
+      }
     } finally {
       setBusy(false);
     }

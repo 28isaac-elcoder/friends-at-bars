@@ -110,7 +110,7 @@ function MapLocationPermissionPrompt({
               </pre>
             </div>
           ) : null}
-          {showWebLocationHelp && (
+          {showWebLocationHelp && !Capacitor.isNativePlatform() && (
             <p
               className="mt-3 max-w-sm text-pretty text-xs leading-relaxed text-amber-200/90"
               role="status"

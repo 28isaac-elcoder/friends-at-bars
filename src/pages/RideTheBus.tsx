@@ -164,6 +164,7 @@ export default function RideTheBus() {
         onAllowLocation={ranked.handleAllowLocation}
         locationBusy={ranked.locationBusy}
         showWebLocationHelp={ranked.showWebLocationHelp}
+        nativeSettingsError={ranked.nativeSettingsError}
       />
       {ranked.isChecking && (
         <div
