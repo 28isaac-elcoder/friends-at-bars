@@ -6,7 +6,7 @@ import {
   VENUE_LOCATION_POLL_INTERVAL_MS,
 } from "@/constants/liveLocation";
 import { appendDiagnosticLog } from "@/lib/diagnosticLog";
-import { liveLocLog } from "@/lib/liveLocationDebug";
+import { liveLocLog, liveLocSupabaseWrite } from "@/lib/liveLocationDebug";
 
 const VENUE_RADIUS_METERS = 100;
 
@@ -54,8 +54,33 @@ function ensureNativePluginListeners(
     onAuthorizationLost();
   });
 
+  void BarFestNativeLiveLocation.addListener("writeStart", (event) => {
+    const action = event.action === "deactivate" ? "deactivate" : "upsert";
+    liveLocSupabaseWrite(action, {
+      path: "native",
+      venue: event.venueName || undefined,
+      status: "calling",
+      venueChanged: event.venueChanged,
+      heartbeatDue: event.heartbeatDue,
+    });
+  });
+
+  void BarFestNativeLiveLocation.addListener("writeSuccess", (event) => {
+    const action = event.action === "deactivate" ? "deactivate" : "upsert";
+    liveLocSupabaseWrite(action, {
+      path: "native",
+      venue: event.venueName || undefined,
+      status: "ok",
+    });
+  });
+
   void BarFestNativeLiveLocation.addListener("writeError", (event) => {
     appendDiagnosticLog("native", "writeError", { message: event.message }, "error");
+    liveLocSupabaseWrite("upsert", {
+      path: "native",
+      status: "error",
+      message: event.message,
+    }, "error");
     liveLocLog("native writeError", { message: event.message });
     onWriteError?.(event.message);
   });

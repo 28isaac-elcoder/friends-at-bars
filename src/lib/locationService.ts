@@ -25,7 +25,7 @@ import {
   VENUE_LIVE_SUPABASE_HEARTBEAT_MS,
 } from "@/constants/liveLocation";
 import { LiveLocationInsert, VenueCounts, Venue } from "@/types/checkin";
-import { liveLocLog, liveLocLogThrottle } from "@/lib/liveLocationDebug";
+import { liveLocLog, liveLocLogThrottle, liveLocSupabaseWrite } from "@/lib/liveLocationDebug";
 import { usesIosNativeLiveLocation } from "@/lib/iosNativeLiveLocation";
 
 export { usesIosNativeLiveLocation };
@@ -945,6 +945,12 @@ export const locationService = {
       last_updated: nowIso,
     };
 
+    liveLocSupabaseWrite("upsert", {
+      path: "JS",
+      venue: venueMatch.venue.name,
+      status: "calling",
+    });
+
     const { error } = await supabase
       .from("live_locations")
       .upsert(locationData, {
@@ -957,21 +963,25 @@ export const locationService = {
         return;
       }
       console.error("Error updating live location:", error);
-      liveLocLog("updateLiveLocation supabase error", {
-        code: error.code,
+      liveLocSupabaseWrite("upsert", {
+        path: "JS",
+        venue: venueMatch.venue.name,
+        status: "error",
         message: error.message,
-      });
+      }, "error");
       return;
     }
-    liveLocLog("updateLiveLocation upsert ok (JS path)", {
+    liveLocSupabaseWrite("upsert", {
+      path: "JS",
       venue: venueMatch.venue.name,
-      userIdPrefix: userId.slice(0, 12),
+      status: "ok",
     });
   },
 
   // Deactivate user's location in database (when tracking stops)
   async deactivateUserLocation(): Promise<void> {
     const userId = getUserId();
+    liveLocSupabaseWrite("deactivate", { path: "JS", status: "calling" });
     const { error } = await supabase
       .from("live_locations")
       .update({
@@ -987,14 +997,15 @@ export const locationService = {
       }
       if (error.code !== "PGRST116") {
         console.error("Error deactivating live location:", error);
-        liveLocLog("deactivateUserLocation error", {
-          code: error.code,
+        liveLocSupabaseWrite("deactivate", {
+          path: "JS",
+          status: "error",
           message: error.message,
         }, "error");
       }
       return;
     }
-    liveLocLog("deactivateUserLocation ok", { userIdPrefix: userId.slice(0, 12) });
+    liveLocSupabaseWrite("deactivate", { path: "JS", status: "ok" });
   },
 
   // Check if location is at a venue (exposed for LocationToggle to check before backend updates)

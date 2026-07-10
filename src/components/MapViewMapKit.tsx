@@ -238,48 +238,58 @@ export default function MapViewMapKit({
     };
   }, []);
 
-  // User location marker (green dot) — add/remove when userLocation or map changes
+  // User location marker (green dot) — update coordinate in place to avoid flicker
+  const userLat = userLocation?.latitude;
+  const userLon = userLocation?.longitude;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const prev = userLocationAnnotationRef.current;
-    if (prev) {
-      try {
-        map.removeAnnotation(prev);
-      } catch {
-        // ignore
+    if (userLat == null || userLon == null) {
+      const prev = userLocationAnnotationRef.current;
+      if (prev) {
+        try {
+          map.removeAnnotation(prev);
+        } catch {
+          // ignore
+        }
+        userLocationAnnotationRef.current = null;
+        liveLocLog("MapKit user pin removed", { mapReady });
       }
-      userLocationAnnotationRef.current = null;
+      return;
     }
 
-    if (userLocation) {
-      liveLocLogThrottle(
-        "mapkit-user-pin",
-        12_000,
-        "MapKit user pin",
-        {
-          mapReady,
-          lat: Math.round(userLocation.latitude * 1e4) / 1e4,
-          lon: Math.round(userLocation.longitude * 1e4) / 1e4,
-        }
-      );
-      const coord = new mapkit.Coordinate(
-        userLocation.latitude,
-        userLocation.longitude
-      );
-      const marker = new mapkit.MarkerAnnotation(coord, {
+    const roundedLat = Math.round(userLat * 1e4) / 1e4;
+    const roundedLon = Math.round(userLon * 1e4) / 1e4;
+    const existing = userLocationAnnotationRef.current;
+
+    if (existing) {
+      existing.coordinate = new mapkit.Coordinate(userLat, userLon);
+      liveLocLogThrottle("mapkit-user-pin", 12_000, "MapKit user pin moved", {
+        mapReady,
+        lat: roundedLat,
+        lon: roundedLon,
+      });
+      return;
+    }
+
+    liveLocLogThrottle("mapkit-user-pin", 12_000, "MapKit user pin", {
+      mapReady,
+      lat: roundedLat,
+      lon: roundedLon,
+    });
+    const marker = new mapkit.MarkerAnnotation(
+      new mapkit.Coordinate(userLat, userLon),
+      {
         title: "",
         subtitle: "",
         color: "#10B981",
         glyphColor: "#ffffff",
-      } as any);
-      map.addAnnotation(marker);
-      userLocationAnnotationRef.current = marker;
-    } else {
-      liveLocLog("MapKit user pin removed", { mapReady });
-    }
-  }, [userLocation, mapReady]);
+      } as any
+    );
+    map.addAnnotation(marker);
+    userLocationAnnotationRef.current = marker;
+  }, [userLat, userLon, mapReady]);
 
   if (error) {
     return (

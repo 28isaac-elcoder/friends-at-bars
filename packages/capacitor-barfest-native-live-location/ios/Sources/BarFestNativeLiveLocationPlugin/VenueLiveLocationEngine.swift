@@ -232,8 +232,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             }
             if shouldDeactivate, !skipSupabase, let api = supabase {
                 api.deactivateLiveLocation(userId: userId) { [weak self] result in
-                    if case .failure(let err) = result {
-                        self?.notifyWriteError(err)
+                    guard let self = self else { return }
+                    switch result {
+                    case .success:
+                        DispatchQueue.main.async {
+                            self.eventDelegate?.engine(self, didWrite: "deactivate", venueName: nil)
+                        }
+                    case .failure(let err):
+                        self.notifyWriteError(err)
                     }
                 }
             }
@@ -250,6 +256,17 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         guard writeDecision.venueChanged || writeDecision.heartbeatDue else { return }
         guard !skipSupabase, let api = supabase else { return }
 
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.eventDelegate?.engine(
+                self,
+                willWrite: "upsert",
+                venueName: writeDecision.name,
+                venueChanged: writeDecision.venueChanged,
+                heartbeatDue: writeDecision.heartbeatDue
+            )
+        }
+
         api.upsertLiveLocation(
             userId: userId,
             venueName: writeDecision.name,
@@ -263,6 +280,13 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                     self.lastWrittenVenue = writeDecision.name
                     self.lastWriteAtMs = Date().timeIntervalSince1970 * 1000
                     self.hadActiveVenueRow = true
+                }
+                DispatchQueue.main.async {
+                    self.eventDelegate?.engine(
+                        self,
+                        didWrite: "upsert",
+                        venueName: writeDecision.name
+                    )
                 }
             case .failure(let err):
                 self.notifyWriteError(err)
@@ -326,6 +350,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
 protocol VenueLiveLocationEngineDelegate: AnyObject {
     func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D)
+    func engine(
+        _ engine: VenueLiveLocationEngine,
+        willWrite action: String,
+        venueName: String,
+        venueChanged: Bool,
+        heartbeatDue: Bool
+    )
+    func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?)
     func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String)
     func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine)
 }

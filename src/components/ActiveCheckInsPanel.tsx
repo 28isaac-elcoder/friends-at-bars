@@ -23,7 +23,7 @@ import {
 } from "@/lib/timeUtils";
 import { cn } from "@/lib/utils";
 import BarDealsCarousel from "@/components/BarDealsCarousel";
-import { getActivitiesCarouselDeals } from "@/data/dealsAndEvents";
+import { getActivitiesCarouselItems } from "@/data/dealsAndEvents";
 
 interface ActiveCheckInsPanelProps {
   checkIns: CheckIn[];
@@ -136,8 +136,8 @@ export default function ActiveCheckInsPanel({
     showLiveViewerCounts && liveVenueCounts !== null && !hideAttendanceBadges
   );
 
-  const barDealsForDate = useMemo(
-    () => (showBarDeals ? getActivitiesCarouselDeals(selectedDate) : []),
+  const carouselItems = useMemo(
+    () => (showBarDeals ? getActivitiesCarouselItems(selectedDate) : []),
     [showBarDeals, selectedDate]
   );
 
@@ -257,8 +257,8 @@ export default function ActiveCheckInsPanel({
         dateTimeRow
       )}
 
-      {showBarDeals && !hideCheckInsList && barDealsForDate.length > 0 ? (
-        <BarDealsCarousel deals={barDealsForDate} />
+      {showBarDeals && !hideCheckInsList && carouselItems.length > 0 ? (
+        <BarDealsCarousel items={carouselItems} />
       ) : null}
 
       {!hideCheckInsList && (

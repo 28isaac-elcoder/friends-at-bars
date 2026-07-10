@@ -32,6 +32,18 @@ export interface WriteErrorEvent {
   message: string;
 }
 
+export interface WriteStartEvent {
+  action: string;
+  venueName: string;
+  venueChanged: boolean;
+  heartbeatDue: boolean;
+}
+
+export interface WriteSuccessEvent {
+  action: string;
+  venueName?: string;
+}
+
 export interface BarFestNativeLiveLocationPlugin {
   configure(options: ConfigureOptions): Promise<void>;
   startTracking(): Promise<void>;
@@ -44,6 +56,14 @@ export interface BarFestNativeLiveLocationPlugin {
   addListener(
     eventName: "writeError",
     listenerFunc: (event: WriteErrorEvent) => void
+  ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    eventName: "writeStart",
+    listenerFunc: (event: WriteStartEvent) => void
+  ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    eventName: "writeSuccess",
+    listenerFunc: (event: WriteSuccessEvent) => void
   ): Promise<{ remove: () => Promise<void> }>;
   addListener(
     eventName: "authorizationLost",

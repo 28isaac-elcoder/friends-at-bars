@@ -111,6 +111,32 @@ public class BarFestNativeLiveLocationPlugin: CAPPlugin, CAPBridgedPlugin, Venue
         )
     }
 
+    func engine(
+        _ engine: VenueLiveLocationEngine,
+        willWrite action: String,
+        venueName: String,
+        venueChanged: Bool,
+        heartbeatDue: Bool
+    ) {
+        notifyListeners(
+            "writeStart",
+            data: [
+                "action": action,
+                "venueName": venueName,
+                "venueChanged": venueChanged,
+                "heartbeatDue": heartbeatDue
+            ]
+        )
+    }
+
+    func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?) {
+        var data: [String: Any] = ["action": action]
+        if let venueName = venueName {
+            data["venueName"] = venueName
+        }
+        notifyListeners("writeSuccess", data: data)
+    }
+
     func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
         notifyListeners("writeError", data: ["message": message])
     }

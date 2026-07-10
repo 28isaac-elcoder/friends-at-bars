@@ -1,74 +1,14 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
-import { CAMPUS_AREAS } from "@/data/venues";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { VISIBLE_CAMPUS_AREAS } from "@/data/venues";
 import {
   WEEKDAY_LABELS,
   countItemsForArea,
-  getDealsForAreaWeekday,
-  getEventsForAreaWeekday,
+  getListingsForAreaWeekday,
   type WeekdayIndex,
-  type DealListItem,
-  type EventListItem,
 } from "@/data/dealsAndEvents";
+import { ListingCard } from "@/components/ListingDisplay";
 import { cn } from "@/lib/utils";
-
-function SpecialBadge({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900">
-      <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
-      {label}
-    </span>
-  );
-}
-
-function DealRow({ item }: { item: DealListItem }) {
-  return (
-    <div className="rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-gray-900">{item.deal}</span>
-        {item.specialLabel ? <SpecialBadge label={item.specialLabel} /> : null}
-      </div>
-      <p className="mt-0.5 text-xs font-medium text-amber-950/85">
-        {item.barName}
-      </p>
-      <p className="text-xs text-gray-600">
-        {item.time}
-        {item.conditions.trim() ? ` · ${item.conditions}` : null}
-      </p>
-      {item.specialDates?.length ? (
-        <p className="mt-0.5 text-[10px] text-gray-500">
-          {item.specialDates.join(", ")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function EventRow({ item }: { item: EventListItem }) {
-  return (
-    <div className="rounded-md border border-violet-200/80 bg-violet-50/50 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-gray-900">{item.title}</span>
-        {item.specialLabel ? <SpecialBadge label={item.specialLabel} /> : null}
-      </div>
-      <p className="mt-0.5 text-xs font-medium text-violet-950/85">
-        {item.barName}
-      </p>
-      {item.description.trim() ? (
-        <p className="text-xs text-gray-700">{item.description}</p>
-      ) : null}
-      <p className="text-xs text-gray-600">
-        {item.time}
-        {item.conditions.trim() ? ` · ${item.conditions}` : null}
-      </p>
-      {item.specialDates?.length ? (
-        <p className="mt-0.5 text-[10px] text-gray-500">
-          {item.specialDates.join(", ")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
 
 function dayKey(area: string, weekday: WeekdayIndex) {
   return `${area}-${weekday}`;
@@ -103,12 +43,12 @@ export default function DealsEventsPanel() {
         Deals &amp; Events
       </h1>
       <p className="mb-3 shrink-0 text-xs text-gray-500">
-        Weekly lineup by area. Special one-night deals and events (e.g. holidays)
-        show on the matching day with a badge.
+        Weekly specials and events by area. Type badges show drink specials,
+        food specials, and events — combo listings mark events in red.
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-2 pb-2">
-          {CAMPUS_AREAS.map((area) => {
+          {VISIBLE_CAMPUS_AREAS.map((area) => {
             const isAreaExpanded = expandedAreas.has(area);
             const itemCount = countItemsForArea(area);
             return (
@@ -137,11 +77,9 @@ export default function DealsEventsPanel() {
                   <div className="space-y-1 border-t border-gray-200 bg-white p-2">
                     {WEEKDAY_LABELS.map((dayLabel, weekday) => {
                       const wd = weekday as WeekdayIndex;
-                      const deals = getDealsForAreaWeekday(area, wd);
-                      const events = getEventsForAreaWeekday(area, wd);
+                      const listings = getListingsForAreaWeekday(area, wd);
                       const key = dayKey(area, wd);
                       const isDayExpanded = expandedDays.has(key);
-                      const dayTotal = deals.length + events.length;
                       return (
                         <div
                           key={key}
@@ -165,56 +103,30 @@ export default function DealsEventsPanel() {
                             <span
                               className={cn(
                                 "shrink-0 text-xs font-medium",
-                                dayTotal > 0
+                                listings.length > 0
                                   ? "text-gray-600"
                                   : "text-gray-400"
                               )}
                             >
-                              {dayTotal === 0
+                              {listings.length === 0
                                 ? "None"
-                                : `${deals.length} deal${deals.length === 1 ? "" : "s"}, ${events.length} event${events.length === 1 ? "" : "s"}`}
+                                : `${listings.length} item${listings.length === 1 ? "" : "s"}`}
                             </span>
                           </button>
                           {isDayExpanded ? (
-                            <div className="space-y-3 border-t border-gray-100 px-3 py-2">
-                              <div>
-                                <h3 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-900/70">
-                                  Deals
-                                </h3>
-                                {deals.length === 0 ? (
-                                  <p className="text-xs text-gray-500">
-                                    No deals scheduled
-                                  </p>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {deals.map((d, i) => (
-                                      <DealRow
-                                        key={`${d.deal}-${d.barName}-${i}`}
-                                        item={d}
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                <h3 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-violet-900/70">
-                                  Events
-                                </h3>
-                                {events.length === 0 ? (
-                                  <p className="text-xs text-gray-500">
-                                    No events scheduled
-                                  </p>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {events.map((e, i) => (
-                                      <EventRow
-                                        key={`${e.title}-${e.barName}-${i}`}
-                                        item={e}
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                            <div className="space-y-1.5 border-t border-gray-100 px-3 py-2">
+                              {listings.length === 0 ? (
+                                <p className="text-xs text-gray-500">
+                                  Nothing scheduled
+                                </p>
+                              ) : (
+                                listings.map((item, i) => (
+                                  <ListingCard
+                                    key={`${item.barName}-${item.title}-${item.time}-${i}`}
+                                    item={item}
+                                  />
+                                ))
+                              )}
                             </div>
                           ) : null}
                         </div>

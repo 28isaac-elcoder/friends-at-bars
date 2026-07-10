@@ -45,3 +45,29 @@ export function liveLocLogThrottle(
   throttleUntil.set(key, now + intervalMs);
   liveLocLog(event, detail);
 }
+
+export type LiveLocationSupabaseAction = "upsert" | "deactivate";
+
+/** Log when live tracking triggers a `live_locations` Supabase write (filter: supabase / liveLoc). */
+export function liveLocSupabaseWrite(
+  action: LiveLocationSupabaseAction,
+  detail: {
+    path: "JS" | "native";
+    venue?: string;
+    status: "calling" | "ok" | "error";
+    venueChanged?: boolean;
+    heartbeatDue?: boolean;
+    message?: string;
+  },
+  level: "info" | "warn" | "error" = "info"
+): void {
+  const event = `live_locations ${action} → Supabase`;
+  const payload = { action, ...detail };
+  appendDiagnosticLog(
+    "supabase",
+    event,
+    payload,
+    level === "info" ? "info" : level
+  );
+  liveLocLog(event, payload, level);
+}

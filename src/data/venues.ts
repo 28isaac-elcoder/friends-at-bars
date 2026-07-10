@@ -17,6 +17,11 @@ export const OHIO_STATE_VENUES: Venue[] = [
     area: "North Campus",
     coordinates: [40.0065, -83.017003],
   },
+  {
+    name: "Fourth Street Taproom",
+    area: "North Campus",
+    coordinates: [40.00029, -82.99842],
+  },
 
   // South Campus
   {
@@ -88,11 +93,41 @@ export const OHIO_STATE_VENUES: Venue[] = [
     coordinates: [39.98065, -83.00397],
   }, // 39°58'50"N 83°00'14"W
 
-  // Grandview
+  // Grandview / Breweries
   {
     name: "Yogi's",
-    area: "Grandview",
+    area: "Grandview / Breweries",
     coordinates: [39.987346, -83.031681],
+  },
+  {
+    name: "Land Grant",
+    area: "Grandview / Breweries",
+    coordinates: [39.9577, -83.01148],
+  },
+  {
+    name: "Highbank Distillery",
+    area: "Grandview / Breweries",
+    coordinates: [39.974, -83.0313],
+  },
+  {
+    name: "Nocterra Brewing Co.",
+    area: "Grandview / Breweries",
+    coordinates: [39.95, -83.0071],
+  },
+  {
+    name: "Barley Brewing Co.",
+    area: "Grandview / Breweries",
+    coordinates: [39.97192, -83.0022],
+  },
+  {
+    name: "Budd Dairy",
+    area: "Grandview / Breweries",
+    coordinates: [39.985168, -82.9989],
+  },
+  {
+    name: "Seventh Son Brewing",
+    area: "Grandview / Breweries",
+    coordinates: [39.985322, -82.99969],
   },
 
   // Test Locations
@@ -107,7 +142,7 @@ export const CAMPUS_AREAS = [
   "North Campus",
   "South Campus",
   "Short North",
-  "Grandview",
+  "Grandview / Breweries",
   "Test Locations",
 ] as const;
 
