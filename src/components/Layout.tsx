@@ -25,6 +25,7 @@ export default function Layout() {
   const { immersive } = useGameImmersive();
   const isActivities = pathname === "/";
   const isDeals = pathname === "/deals";
+  const isChat = pathname === "/chat";
   const isMap = pathname === "/map";
   const isLog = pathname === "/log";
   const isGames = pathname === "/games" || pathname.startsWith("/games/");
@@ -37,11 +38,19 @@ export default function Layout() {
   const showBottomNav =
     isActivities ||
     isDeals ||
+    isChat ||
     isMap ||
     isLog ||
     (isGames && !(isSwitchSearch && immersive) && !isMegaToe && !isRideTheBus);
   const fullHeightMain =
-    isActivities || isDeals || isMap || isLog || isSwitchSearch || isMegaToe || isRideTheBus;
+    isActivities ||
+    isDeals ||
+    isChat ||
+    isMap ||
+    isLog ||
+    isSwitchSearch ||
+    isMegaToe ||
+    isRideTheBus;
 
   const bottomNavPad = "calc(3.5rem + var(--safe-area-inset-bottom))";
   const immersiveShell = shellHeightImmersive();

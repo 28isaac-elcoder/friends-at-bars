@@ -14,6 +14,7 @@ const SwitchSearch = lazy(() => import("./pages/SwitchSearch"));
 const MegaToe = lazy(() => import("./pages/MegaToe"));
 const RideTheBus = lazy(() => import("./pages/RideTheBus"));
 const LogPage = lazy(() => import("./pages/LogPage"));
+const Chat = lazy(() => import("./pages/Chat"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading fallback component
@@ -73,6 +74,14 @@ function App() {
                 element={
                   <Suspense fallback={<LoadingFallback />}>
                     <DealsEvents />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="chat"
+                element={
+                  <Suspense fallback={<LoadingFallback />}>
+                    <Chat />
                   </Suspense>
                 }
               />

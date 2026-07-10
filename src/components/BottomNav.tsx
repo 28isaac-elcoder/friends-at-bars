@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { List, MapPin, Gamepad2, ScrollText, Ticket } from "lucide-react";
+import { List, MapPin, Gamepad2, ScrollText, Ticket, MessagesSquare } from "lucide-react";
 import { useTestMode } from "@/contexts/TestModeContext";
 import { ENABLE_DEV_TEST_MODE_UI } from "@/config/devTestMode";
 
@@ -11,6 +11,7 @@ export default function BottomNav() {
 
   const isActivities = pathname === "/";
   const isDeals = pathname === "/deals";
+  const isChat = pathname === "/chat";
   const isGames = pathname === "/games" || pathname.startsWith("/games/");
   const isMap = pathname === "/map";
   const isLog = pathname === "/log";
@@ -74,6 +75,16 @@ export default function BottomNav() {
             <span>Log</span>
           </Link>
         ) : null}
+        <Link
+          to="/chat"
+          className={cn(
+            "flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium transition-colors sm:px-4",
+            isChat ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <MessagesSquare className="h-5 w-5" />
+          <span>Chat</span>
+        </Link>
         <Link
           to="/map"
           className={cn(
