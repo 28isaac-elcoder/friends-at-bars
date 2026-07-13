@@ -9,7 +9,7 @@ type ChatSortTabsProps = {
 export function ChatSortTabs({ sort, onChange }: ChatSortTabsProps) {
   return (
     <div
-      className="flex border-b border-border bg-card"
+      className="flex bg-card"
       role="tablist"
       aria-label="Chat feed sort"
     >

@@ -36,7 +36,8 @@
 @media (max-width: 768px) {
   /* Ensure minimum touch target sizes on mobile */
   /* Compact full-width strips (Activities location CTA) opt out — see Activities.tsx */
-  button:not(.mega-toe-cell):not(.activities-location-strip),
+  /* Chat composer send stays line-height sized inside the input pill */
+  button:not(.mega-toe-cell):not(.activities-location-strip):not(.chat-composer-send):not(.chat-vote-score):not(.chat-vote-chevron),
   a,
   input[type="button"],
   input[type="submit"],
@@ -45,7 +46,10 @@
     min-width: 44px;
   }
 
-  button.activities-location-strip {
+  button.activities-location-strip,
+  button.chat-composer-send,
+  button.chat-vote-score,
+  button.chat-vote-chevron {
     min-height: unset;
     min-width: unset;
   }
