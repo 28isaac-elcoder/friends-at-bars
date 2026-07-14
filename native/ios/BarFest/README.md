@@ -5,7 +5,7 @@ Replaces the Capacitor WebView product UI on iPhone. Catalog (venues / deals / g
 ## Open in Xcode
 
 1. Install [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
-2. Set `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `project.yml` (or Xcode build settings).
+2. Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` (Codemagic env injects into Info.plist).
 3. From this folder:
 
 ```bash

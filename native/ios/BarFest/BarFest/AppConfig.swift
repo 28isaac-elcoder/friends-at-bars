@@ -2,21 +2,22 @@ import Foundation
 
 enum AppConfig {
     static var supabaseURL: String {
-        let fromPlist = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String
+        let fromPlist = Bundle.main.object(forInfoDictionaryKey: "VITE_SUPABASE_URL") as? String
         if let fromPlist, !fromPlist.isEmpty, !fromPlist.contains("$(") {
             return fromPlist
         }
-        return ProcessInfo.processInfo.environment["SUPABASE_URL"]
+        return ProcessInfo.processInfo.environment["VITE_SUPABASE_URL"]
             ?? "https://YOUR_PROJECT.supabase.co"
     }
 
     static var supabaseAnonKey: String {
-        let fromPlist = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String
+        let fromPlist =
+            Bundle.main.object(forInfoDictionaryKey: "VITE_SUPABASE_PUBLISHABLE_KEY") as? String
         if let fromPlist, !fromPlist.isEmpty, !fromPlist.contains("$(") {
             return fromPlist
         }
-        return ProcessInfo.processInfo.environment["SUPABASE_ANON_KEY"]
-            ?? "YOUR_ANON_KEY"
+        return ProcessInfo.processInfo.environment["VITE_SUPABASE_PUBLISHABLE_KEY"]
+            ?? "YOUR_PUBLISHABLE_KEY"
     }
 
     static let venueRadiusMeters: Double = 100

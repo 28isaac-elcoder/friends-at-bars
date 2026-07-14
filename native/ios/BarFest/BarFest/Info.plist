@@ -36,9 +36,9 @@
 	<array>
 		<string>location</string>
 	</array>
-	<key>SUPABASE_URL</key>
+	<key>VITE_SUPABASE_URL</key>
 	<string>https://YOUR_PROJECT.supabase.co</string>
-	<key>SUPABASE_ANON_KEY</key>
-	<string>YOUR_ANON_KEY</string>
+	<key>VITE_SUPABASE_PUBLISHABLE_KEY</key>
+	<string>YOUR_PUBLISHABLE_KEY</string>
 </dict>
 </plist>
