@@ -2,12 +2,20 @@ import SwiftUI
 
 struct ActivitiesView: View {
     @EnvironmentObject private var appModel: AppModel
+    @ObservedObject private var testMode = TestModeStore.shared
     @State private var checkIns: [CheckInRow] = []
     @State private var error: String?
 
     var body: some View {
         NavigationStack {
             List {
+                if testMode.useMockCheckIns {
+                    Section {
+                        Text("Test Mode: showing mock headcounts")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                    }
+                }
                 Section("Live headcounts") {
                     ForEach(appModel.venues.prefix(20)) { venue in
                         HStack {
@@ -36,11 +44,19 @@ struct ActivitiesView: View {
             .navigationTitle("Activities")
             .refreshable { await reload() }
             .task { await reload() }
+            .onChange(of: testMode.useMockCheckIns) { _, _ in
+                Task { await appModel.refreshCatalog(); await reload() }
+            }
         }
     }
 
     private func reload() async {
         await appModel.refreshCatalog()
+        if testMode.useMockCheckIns {
+            checkIns = []
+            error = nil
+            return
+        }
         do {
             checkIns = try await CheckInService.recent()
             error = nil

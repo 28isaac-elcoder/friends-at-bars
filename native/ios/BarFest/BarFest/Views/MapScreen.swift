@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MapScreen: View {
     @EnvironmentObject private var appModel: AppModel
+    @ObservedObject private var testMode = TestModeStore.shared
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 40.002, longitude: -83.008),
@@ -28,7 +29,7 @@ struct MapScreen: View {
                                     .clipShape(Capsule())
                             }
                             Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(venue.is_test ? .orange : .red)
                                 .font(.title2)
                         }
                     }
@@ -39,7 +40,7 @@ struct MapScreen: View {
                 MapUserLocationButton()
                 MapCompass()
             }
-            .navigationTitle("Map")
+            .navigationTitle(testMode.useMockCheckIns ? "Map (Test Mode)" : "Map")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -50,6 +51,9 @@ struct MapScreen: View {
                 }
             }
             .refreshable { await appModel.refreshCatalog() }
+            .onChange(of: testMode.useMockCheckIns) { _, _ in
+                Task { await appModel.refreshCatalog() }
+            }
         }
     }
 }

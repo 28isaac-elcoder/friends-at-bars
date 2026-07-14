@@ -20,6 +20,14 @@ open BarFest.xcodeproj
 
 `BarFest/Location/` is the absorbed `BarFestNativeLiveLocation` CoreLocation engine (venue radius 100m, heartbeat upserts to `live_locations`). Chat posting still requires a fresh `live_locations` row for the anonymous Keychain user id.
 
+## Test Mode / Log (dev)
+
+Shown when `bundleId` contains `.test` **or** Info.plist `ENABLE_DEV_TEST_MODE_UI` is true (set by `native-ios-test-workflow`).
+
+- Top **Test Mode** chip — mock headcounts + include catalog test venues  
+- Chat location pin — simulate OS location deny for composer  
+- **Log** tab — location/system diagnostic lines  
+
 ## App icon
 
 `BarFest/Assets.xcassets/AppIcon.appiconset` (generated from Cap’s 1024 app icon). Wired via `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` and `CFBundleIconName` in Info.plist.
@@ -35,17 +43,12 @@ After `xcodegen`, CI runs `git checkout` on Info.plist and re-applies those hard
 
 ## TestFlight (Codemagic)
 
-See root `codemagic.yaml` workflow `native-ios-workflow`:
+| Workflow | Bundle | ASC |
+|----------|--------|-----|
+| `native-ios-workflow` | `com.barfest.app` | Bar Fest (production) |
+| `native-ios-test-workflow` | `com.barfest.app.test` | Bar Fest Test |
 
-- Project: `native/ios/BarFest/BarFest.xcodeproj`
-- Scheme: `BarFest`
-- Bundle id: `com.barfest.app` (same as Capacitor during beta, or change while dual-shipping)
-
-Generate the Xcode project in CI before archive:
-
-```bash
-cd native/ios/BarFest && xcodegen generate
-```
+See root `codemagic.yaml`. Manual start: pick branch + matching workflow.
 
 ## Tabs
 

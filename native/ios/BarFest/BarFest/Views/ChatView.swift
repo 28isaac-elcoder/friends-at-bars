@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
+    @ObservedObject private var testMode = TestModeStore.shared
     @State private var posts: [ChatPost] = []
     @State private var sort = "recent"
     @State private var draft = ""
@@ -9,16 +10,51 @@ struct ChatView: View {
     @FocusState private var composerFocused: Bool
 
     private var remaining: Int { AppConfig.maxChatChars - draft.count }
-    private var atVenue: Bool { appModel.lastVenueName != nil }
+
+    /// Live venue from engine, unless Test Mode simulates location off.
+    private var atVenue: Bool {
+        if testMode.uiEnabled && !testMode.simulateLocationAllowed {
+            return false
+        }
+        return appModel.lastVenueName != nil
+    }
+
+    private var effectiveVenueName: String? {
+        if testMode.uiEnabled && !testMode.simulateLocationAllowed {
+            return nil
+        }
+        return appModel.lastVenueName
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Sort", selection: $sort) {
-                    Text("Recent").tag("recent")
-                    Text("Popular").tag("popular")
+                HStack {
+                    Picker("Sort", selection: $sort) {
+                        Text("Recent").tag("recent")
+                        Text("Popular").tag("popular")
+                    }
+                    .pickerStyle(.segmented)
+
+                    if testMode.uiEnabled {
+                        Button {
+                            testMode.simulateLocationAllowed.toggle()
+                            DiagnosticLog.shared.append(
+                                category: "chat",
+                                message: "Simulate location allowed=\(testMode.simulateLocationAllowed)"
+                            )
+                        } label: {
+                            Image(systemName: testMode.simulateLocationAllowed
+                                  ? "location.fill"
+                                  : "location.slash")
+                        }
+                        .accessibilityLabel(
+                            testMode.simulateLocationAllowed
+                                ? "Simulate location on"
+                                : "Simulate location off"
+                        )
+                    }
                 }
-                .pickerStyle(.segmented)
                 .padding()
                 .onChange(of: sort) { _, _ in
                     Task { await load() }
@@ -113,11 +149,16 @@ struct ChatView: View {
             error = nil
         } catch {
             self.error = error.localizedDescription
+            DiagnosticLog.shared.append(
+                category: "chat",
+                message: error.localizedDescription,
+                level: "error"
+            )
         }
     }
 
     private func send() async {
-        guard let venue = appModel.lastVenueName else {
+        guard let venue = effectiveVenueName else {
             error = "Must be at a Bar to Chat"
             return
         }
@@ -131,9 +172,15 @@ struct ChatView: View {
             try await ChatService.createPost(body: trimmed, venueName: venue)
             draft = ""
             composerFocused = false
+            DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venue)")
             await load()
         } catch {
             self.error = error.localizedDescription
+            DiagnosticLog.shared.append(
+                category: "chat",
+                message: error.localizedDescription,
+                level: "error"
+            )
         }
     }
 }

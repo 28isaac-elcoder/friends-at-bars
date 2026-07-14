@@ -3,11 +3,13 @@ import SwiftUI
 @main
 struct BarFestApp: App {
     @StateObject private var appModel = AppModel()
+    @StateObject private var testMode = TestModeStore.shared
 
     var body: some Scene {
         WindowGroup {
             RootTabView()
                 .environmentObject(appModel)
+                .environmentObject(testMode)
                 .task {
                     await appModel.bootstrap()
                 }
@@ -28,6 +30,10 @@ final class AppModel: ObservableObject {
     private let locationBridge = LocationBridge()
 
     func bootstrap() async {
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Bootstrap bundle=\(Bundle.main.bundleIdentifier ?? "?") testUI=\(DevTestMode.isUIEnabled)"
+        )
         await CatalogStore.shared.loadCachedVenuesIfNeeded()
         venues = await CatalogStore.shared.venues
         await refreshCatalog()
@@ -39,7 +45,6 @@ final class AppModel: ObservableObject {
                 }
             }
         )
-        // Sync venue from engine for chat / ranked gates even if write events were missed.
         let state = VenueLiveLocationEngine.shared.currentState()
         lastVenueName = state.lastVenue
     }
@@ -47,18 +52,40 @@ final class AppModel: ObservableObject {
     func refreshCatalog() async {
         isRefreshing = true
         defer { isRefreshing = false }
+        let includeTest = DevTestMode.isUIEnabled || TestModeStore.shared.useMockCheckIns
         do {
-            try await CatalogStore.shared.refresh(includeTest: false)
+            try await CatalogStore.shared.refresh(includeTest: includeTest)
             venues = await CatalogStore.shared.venues
             listings = await CatalogStore.shared.listings
             wordPackReady = !(await CatalogStore.shared.wordPack.isEmpty)
-            venueCounts = try await LiveLocationService.venueCounts()
+            if TestModeStore.shared.useMockCheckIns {
+                venueCounts = mockVenueCounts(from: venues)
+            } else {
+                venueCounts = try await LiveLocationService.venueCounts()
+            }
             locationBridge.updateVenues(venues)
             errorMessage = nil
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Catalog refresh venues=\(venues.count) mock=\(TestModeStore.shared.useMockCheckIns)"
+            )
         } catch {
             errorMessage = error.localizedDescription
             venues = await CatalogStore.shared.venues
+            DiagnosticLog.shared.append(
+                category: "error",
+                message: "Catalog refresh failed: \(error.localizedDescription)",
+                level: "error"
+            )
         }
+    }
+
+    private func mockVenueCounts(from venues: [CatalogVenue]) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for (i, v) in venues.prefix(12).enumerated() {
+            counts[v.name] = (i % 5) + 1
+        }
+        return counts
     }
 }
 
@@ -83,13 +110,21 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
                 skipSupabase: false
             )
             VenueLiveLocationEngine.shared.eventDelegate = self
-            // Request always auth; start when granted (caller may re-call).
             let mgr = CLLocationManagerProbe.shared
             mgr.requestAlways()
             try? VenueLiveLocationEngine.shared.startTracking()
+            Task { @MainActor in
+                DiagnosticLog.shared.append(category: "location", message: "Tracking start requested")
+            }
         } catch {
-            // Permission may not be ready yet
             print("LocationBridge start: \(error)")
+            Task { @MainActor in
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "Tracking start failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
         }
     }
 
@@ -109,22 +144,60 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         )
     }
 
-    func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {}
+    func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {
+        Task { @MainActor in
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: String(format: "Fix %.5f, %.5f", coordinate.latitude, coordinate.longitude)
+            )
+        }
+    }
+
     func engine(
         _ engine: VenueLiveLocationEngine,
         willWrite action: String,
         venueName: String,
         venueChanged: Bool,
         heartbeatDue: Bool
-    ) {}
+    ) {
+        Task { @MainActor in
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "willWrite \(action) venue=\(venueName) changed=\(venueChanged) heartbeat=\(heartbeatDue)"
+            )
+        }
+    }
+
     func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?) {
         onVenue?(venueName)
+        Task { @MainActor in
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "didWrite \(action) venue=\(venueName ?? "nil")"
+            )
+        }
     }
+
     func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
         print("live location write failed: \(message)")
+        Task { @MainActor in
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "write failed: \(message)",
+                level: "error"
+            )
+        }
     }
+
     func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine) {
         onVenue?(nil)
+        Task { @MainActor in
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "Lost Always authorization",
+                level: "warn"
+            )
+        }
     }
 }
 
