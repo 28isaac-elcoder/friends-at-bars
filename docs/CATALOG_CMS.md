@@ -27,7 +27,7 @@ Optional: tighten further with an `admin` claim / allowlist table later.
 
 ```bash
 cd admin-cms
-cp .env.example .env.local   # set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+cp .env.example .env.local   # set VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY
 npm install
 npm run dev
 ```
