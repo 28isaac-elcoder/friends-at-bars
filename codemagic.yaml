@@ -171,17 +171,27 @@ workflows:
         script: |
           cd native/ios/BarFest
           xcodegen generate
-      - name: Inject Supabase secrets into Info.plist
+          # XcodeGen rewrites Info.plist and forces CFBundleVersion=1 — restore git version.
+          git checkout HEAD -- BarFest/Info.plist
+      - name: Restore Info.plist versions + inject Supabase secrets
         script: |
-          # Same VITE_* names as the React / Vercel apps (set in Codemagic env group)
-          /usr/libexec/PlistBuddy -c "Set :VITE_SUPABASE_URL ${VITE_SUPABASE_URL}" native/ios/BarFest/BarFest/Info.plist || \
-            /usr/libexec/PlistBuddy -c "Add :VITE_SUPABASE_URL string ${VITE_SUPABASE_URL}" native/ios/BarFest/BarFest/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :VITE_SUPABASE_PUBLISHABLE_KEY ${VITE_SUPABASE_PUBLISHABLE_KEY}" native/ios/BarFest/BarFest/Info.plist || \
-            /usr/libexec/PlistBuddy -c "Add :VITE_SUPABASE_PUBLISHABLE_KEY string ${VITE_SUPABASE_PUBLISHABLE_KEY}" native/ios/BarFest/BarFest/Info.plist
-          # Confirm native build number will exceed last ASC upload (must match project.yml)
-          echo "Info.plist CFBundleVersion=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' native/ios/BarFest/BarFest/Info.plist)"
-          xcodebuild -project native/ios/BarFest/BarFest.xcodeproj -scheme BarFest -showBuildSettings 2>/dev/null \
-            | grep -E 'CURRENT_PROJECT_VERSION|MARKETING_VERSION' || true
+          PLIST=native/ios/BarFest/BarFest/Info.plist
+          # Hardcoded marketing / build (bump these in Info.plist + here before each TestFlight upload).
+          # Keep in sync with BarFest/Info.plist CFBundleShortVersionString / CFBundleVersion.
+          NATIVE_MARKETING_VERSION=1.0.1
+          NATIVE_BUILD_NUMBER=3
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${NATIVE_MARKETING_VERSION}" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${NATIVE_MARKETING_VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NATIVE_BUILD_NUMBER}" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${NATIVE_BUILD_NUMBER}" "$PLIST"
+          # Same VITE_* names as the React / Vercel apps (Codemagic env group)
+          /usr/libexec/PlistBuddy -c "Set :VITE_SUPABASE_URL ${VITE_SUPABASE_URL}" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :VITE_SUPABASE_URL string ${VITE_SUPABASE_URL}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :VITE_SUPABASE_PUBLISHABLE_KEY ${VITE_SUPABASE_PUBLISHABLE_KEY}" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :VITE_SUPABASE_PUBLISHABLE_KEY string ${VITE_SUPABASE_PUBLISHABLE_KEY}" "$PLIST"
+          echo "Info.plist CFBundleShortVersionString=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+          echo "Info.plist CFBundleVersion=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")" = "${NATIVE_BUILD_NUMBER}"
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles

@@ -20,16 +20,14 @@ open BarFest.xcodeproj
 
 `BarFest/Location/` is the absorbed `BarFestNativeLiveLocation` CoreLocation engine (venue radius 100m, heartbeat upserts to `live_locations`). Chat posting still requires a fresh `live_locations` row for the anonymous Keychain user id.
 
-## Version / build numbers
+## Version / build numbers (hardcoded)
 
-Edit in [`project.yml`](project.yml) under `targets.BarFest.settings.base`:
+Edit **both** places before each TestFlight upload (must stay in sync):
 
-| Key | Meaning |
-|-----|---------|
-| `MARKETING_VERSION` | User-facing version (e.g. `1.0.0`) |
-| `CURRENT_PROJECT_VERSION` | Build number Apple requires to increase each upload |
+1. [`BarFest/Info.plist`](BarFest/Info.plist) — `CFBundleShortVersionString` / `CFBundleVersion`
+2. Root [`codemagic.yaml`](../../../codemagic.yaml) — `native-ios-workflow` vars `NATIVE_MARKETING_VERSION` / `NATIVE_BUILD_NUMBER`
 
-`Info.plist` reads `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`. Same pattern as Cap `ios/App/App.xcodeproj` (`CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` in the pbxproj).
+After `xcodegen`, CI runs `git checkout` on Info.plist and re-applies those hardcodes so XcodeGen cannot reset the build to `1`.
 
 ## TestFlight (Codemagic)
 
