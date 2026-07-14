@@ -20,6 +20,10 @@ open BarFest.xcodeproj
 
 `BarFest/Location/` is the absorbed `BarFestNativeLiveLocation` CoreLocation engine (venue radius 100m, heartbeat upserts to `live_locations`). Chat posting still requires a fresh `live_locations` row for the anonymous Keychain user id.
 
+## App icon
+
+`BarFest/Assets.xcassets/AppIcon.appiconset` (generated from Cap’s 1024 app icon). Wired via `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` and `CFBundleIconName` in Info.plist.
+
 ## Version / build numbers (hardcoded)
 
 Edit **both** places before each TestFlight upload (must stay in sync):
