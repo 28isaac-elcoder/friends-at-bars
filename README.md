@@ -31,6 +31,15 @@ A Vite + React + TypeScript project with Tailwind CSS and ShadCN UI for building
    npm run build
    ```
 
+## Native hybrid (iOS-first)
+
+Product path is **SwiftUI + Supabase catalog** (not Cap remote WebView):
+
+- Catalog SQL: `supabase/catalog_setup.sql` + `catalog_seed.sql`
+- Admin CMS: `admin-cms/` (deploy to Vercel) — see `docs/CATALOG_CMS.md`
+- Native iOS: `native/ios/BarFest/` — see `docs/NATIVE_HYBRID.md`
+- Android scaffold: `native/android/`
+
 ## Available Scripts
 
 - `npm run dev` - Start development server

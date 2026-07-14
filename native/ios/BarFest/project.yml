@@ -1,0 +1,40 @@
+name: BarFest
+options:
+  bundleIdPrefix: com.barfest
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  BarFest:
+    type: application
+    platform: iOS
+    sources:
+      - path: BarFest
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.barfest.app
+        INFOPLIST_FILE: BarFest/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "" # set in Xcode / CI
+        SUPABASE_URL: "https://YOUR_PROJECT.supabase.co"
+        SUPABASE_ANON_KEY: "YOUR_ANON_KEY"
+    info:
+      path: BarFest/Info.plist
+      properties:
+        UILaunchScreen: {}
+schemes:
+  BarFest:
+    build:
+      targets:
+        BarFest: all
+    run:
+      config: Debug
+    archive:
+      config: Release

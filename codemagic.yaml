@@ -138,3 +138,58 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  # Native SwiftUI shell (Phase 1+) — no Capacitor / Vite web bundle.
+  native-ios-workflow:
+    name: Native iOS BarFest (TestFlight)
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: native-ios
+          include: true
+    integrations:
+      app_store_connect: bar_fest_apple_api
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+    environment:
+      groups:
+        - bar_fest_distribution
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.barfest.app
+      vars:
+        XCODE_PROJECT: "native/ios/BarFest/BarFest.xcodeproj"
+        XCODE_SCHEME: "BarFest"
+        BUNDLE_ID: "com.barfest.app"
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen || true
+      - name: Generate Xcode project
+        script: |
+          cd native/ios/BarFest
+          xcodegen generate
+      - name: Inject Supabase secrets into Info.plist
+        script: |
+          /usr/libexec/PlistBuddy -c "Set :SUPABASE_URL ${SUPABASE_URL}" native/ios/BarFest/BarFest/Info.plist || \
+            /usr/libexec/PlistBuddy -c "Add :SUPABASE_URL string ${SUPABASE_URL}" native/ios/BarFest/BarFest/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :SUPABASE_ANON_KEY ${SUPABASE_ANON_KEY}" native/ios/BarFest/BarFest/Info.plist || \
+            /usr/libexec/PlistBuddy -c "Add :SUPABASE_ANON_KEY string ${SUPABASE_ANON_KEY}" native/ios/BarFest/BarFest/Info.plist
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false

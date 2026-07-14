@@ -23,7 +23,9 @@
     "cap:open:ios": "npx cap open ios",
     "cap:build": "npm run build && npx cap sync",
     "cap:build:ios": "npm run build:native-plugin && npm run build && npx cap sync ios",
-    "build:native-plugin": "npm install --prefix packages/capacitor-barfest-native-live-location && npm run build --prefix packages/capacitor-barfest-native-live-location"
+    "build:native-plugin": "npm install --prefix packages/capacitor-barfest-native-live-location && npm run build --prefix packages/capacitor-barfest-native-live-location",
+    "catalog:seed": "node scripts/generate-catalog-seed.mjs",
+    "cms:dev": "npm run dev --prefix admin-cms"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",

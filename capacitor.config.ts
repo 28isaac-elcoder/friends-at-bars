@@ -1,6 +1,10 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
-/** Production — keep in sync with capacitor.config.ts (source for prod CI). */
+/**
+ * Capacitor WebView config (legacy consumer path).
+ * iOS product UI is moving to native/ios/BarFest (Swift). Prefer that binary for TestFlight;
+ * see docs/NATIVE_HYBRID.md. Keep this file for Android Cap / transitional Cap iOS only.
+ */
 const config: CapacitorConfig = {
   appId: 'com.barfest.app',
   appName: 'Bar Fest',
