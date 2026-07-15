@@ -261,7 +261,7 @@ workflows:
           fi
           NATIVE_MARKETING_VERSION=1.0.1
           # Independent of production Bar Fest build numbers
-          NATIVE_BUILD_NUMBER=1
+          NATIVE_BUILD_NUMBER=2
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${NATIVE_MARKETING_VERSION}" "$PLIST" || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${NATIVE_MARKETING_VERSION}" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NATIVE_BUILD_NUMBER}" "$PLIST" || \

@@ -23,5 +23,6 @@ struct RootTabView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
