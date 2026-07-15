@@ -67,7 +67,7 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             DiagnosticLog.shared.append(
                 category: "system",
-                message: "Catalog refresh venues=\(venues.count) mock=\(TestModeStore.shared.useMockCheckIns)"
+                message: "Catalog refresh venues=\(venues.count) listings=\(listings.count) mock=\(TestModeStore.shared.useMockCheckIns)"
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -110,9 +110,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
                 skipSupabase: false
             )
             VenueLiveLocationEngine.shared.eventDelegate = self
-            let mgr = CLLocationManagerProbe.shared
-            mgr.requestAlways()
-            try? VenueLiveLocationEngine.shared.startTracking()
+            LocationAuthorizationStore.shared.softStartTrackingIfPossible()
             Task { @MainActor in
                 DiagnosticLog.shared.append(category: "location", message: "Tracking start requested")
             }
@@ -203,16 +201,4 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
 
 import CoreLocation
 
-final class CLLocationManagerProbe: NSObject, CLLocationManagerDelegate {
-    static let shared = CLLocationManagerProbe()
-    private let manager = CLLocationManager()
-
-    private override init() {
-        super.init()
-        manager.delegate = self
-    }
-
-    func requestAlways() {
-        manager.requestAlwaysAuthorization()
-    }
-}
+// CLLocationManagerProbe removed — use LocationAuthorizationStore.shared

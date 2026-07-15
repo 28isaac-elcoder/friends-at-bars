@@ -1,0 +1,801 @@
+[
+  {
+    "venue_name": "Out-R-Inn",
+    "title": "Mug Night",
+    "time_label": "8pm-Close",
+    "details": "$5 Out-R-Inn Mug ; $4 Mich Ultra or Hoop Tea ; $5 Stella, Mango Cart, Kona, Land Grant",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Out-R-Inn",
+    "title": "Out-R-Thursday",
+    "time_label": "4pm-Close",
+    "details": "$2 Doubles and Well Night",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 3,
+    "is_active": true
+  },
+  {
+    "venue_name": "Horseshoe",
+    "title": "Line Dancing",
+    "time_label": "8pm-Close",
+    "details": "",
+    "area": "North Campus",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Three's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$1 Wells",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      2
+    ],
+    "priority": 5,
+    "is_active": true
+  },
+  {
+    "venue_name": "Fourth Street Taproom",
+    "title": "Karaoke Wednesdays",
+    "time_label": "8pm-Close",
+    "details": "$2 Fireball ; $4 Doubles ; 5 for $20 Nutrl Bucket ; Karaoke (9pm)",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Event"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Fourth Street Taproom",
+    "title": "50% Off",
+    "time_label": "Open-Close",
+    "details": "1/2 Off All Alcohol",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      2
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Fourth Street Taproom",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$3 Crown Shots ; $0.75 Wings",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Fourth Street Taproom",
+    "title": "Mimosa Day",
+    "time_label": "11am-3pm",
+    "details": "$25 Mimosa Towers",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      6,
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Fourth Street Taproom",
+    "title": "Happy Hour",
+    "time_label": "4pm-8pm",
+    "details": "$5 Drafts ; $8 Signature Cocktails ; 25% Off Appetizers",
+    "area": "North Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Ethyl & Tank",
+    "title": "Tini-Tuesday",
+    "time_label": "Unsure-Unsure",
+    "details": "$5 Martinis ; $3 Martini Shots",
+    "area": "South Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      2
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Ethyl & Tank",
+    "title": "",
+    "time_label": "10pm-Close",
+    "details": "$15 Beer Buckets ; $5 Spritz ; $3 Rumple Shots",
+    "area": "South Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Midway",
+    "title": "Madness",
+    "time_label": "8pm-Close",
+    "details": "$1 Bomb Shots ; $1 Wells",
+    "area": "South Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 2,
+    "is_active": true
+  },
+  {
+    "venue_name": "Ugly Tuna 2",
+    "title": "Ugly Hour",
+    "time_label": "7pm-10pm",
+    "details": "$1 Wells ; $1 Bomb Shots",
+    "area": "South Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Ugly Tuna 2",
+    "title": "Ugly Hour",
+    "time_label": "7pm-Close",
+    "details": "$1 Wells ; $1 Bomb Shots",
+    "area": "South Campus",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 1,
+    "is_active": true
+  },
+  {
+    "venue_name": "Leo's",
+    "title": "BINGO Night",
+    "time_label": "8pm-Unsure",
+    "details": "",
+    "area": "South Campus",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Leo's",
+    "title": "Trivia Night",
+    "time_label": "8pm-Unsure",
+    "details": "",
+    "area": "South Campus",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 4,
+    "is_active": true
+  },
+  {
+    "venue_name": "Leo's",
+    "title": "Karaoke Night",
+    "time_label": "10pm-Close",
+    "details": "",
+    "area": "South Campus",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Standard",
+    "title": "Ladies Night",
+    "time_label": "6pm-12:00 AM (Midnight)",
+    "details": "$2 Double Wells ; $2 Domestic Bottles ; $3 Lemon Drops ; $3 Green Teas ; $4 Boozy Lemonade ; $5 Smashburger",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Standard",
+    "title": "Beat the Bull",
+    "time_label": "Unsure-Close",
+    "details": "Ride the Bull (pause) and Win a Hat",
+    "area": "Short North",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      4,
+      5,
+      6
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Standard",
+    "title": "Power Hour",
+    "time_label": "6pm-8pm",
+    "details": "$1 Wells ; Free Pizza",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      4,
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Standard",
+    "title": "Extended Happy Hour",
+    "time_label": "6pm-10pm",
+    "details": "1/2 Off Pizza and Appetizers ; $3 Wells, Cans, & Drafts",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Standard",
+    "title": "Karaoke Night",
+    "time_label": "6pm-12:00 AM (Midnight)",
+    "details": "$2 Double Wells ; $2 Domestic Bottles ; $3 Lemon Drops ; $3 Prosecco ; $3 Green Tea ; $4 Boozy Lemonade ; $5 Smashburger",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special",
+      "Event"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "Happy Hour",
+    "time_label": "3pm-7pm",
+    "details": "$4 Short Domestic ; $5.50 Tall Domestic ; $3 Wells",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$2 Wells ; $3 Hot Shots ; $4 Drafts ; $5 Lemonade Iced Teas (small)",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$3 Wells ; $3 Burgers ; $4 Hot Shots ; $3.50 Domestic Bottles",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      2
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$0.40 Wings ; $2 Busch ; $3 Green Teas ; $4 Double Wells ; $5 Tall Domestic",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$2 Double Wells ; $3 Domestic Bottles ; $3 Bombs; $4 Lemonade Iced Teas (small)",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$3 Double Wells ; $4 Titos Mixers ; $4 Jameson Mixers; $8 Lemonade Iced Teas",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Brother's",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$4 Fireball ; $4 Bombs ; $6 Vegas Bombs; $7 Double Vodka Redbull",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      6
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Gaswerks",
+    "title": "Happy Hour",
+    "time_label": "3pm-7pm",
+    "details": "$3 wells ; $4 domestic ; $5 call mixers ; $5 craft drafts",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Gaswerks",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$1 cherry bombs ; $1 wells ; $2 domestic ; $4 quad wells",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Gaswerks",
+    "title": "",
+    "time_label": "9pm-Close",
+    "details": "$1 cherry bombs ; $1 jager bombs ; $4 domestic ; $4 green tea shots ; $5 surfsides ; $6 double vodka red bulls",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Gaswerks",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$1 cherry bombs ; $1 jager bombs ; $5 bud light (tall) ; $5 lemon drops",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      6
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Short North Tavern",
+    "title": "",
+    "time_label": "3pm-7pm",
+    "details": "$2.25 Bud light, Miller light, High Life, Coors Light, PBR, Yuengling, Strohs",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Pint House",
+    "title": "Happy Hour",
+    "time_label": "3pm-6pm",
+    "details": "$3 Domestic Crafts ; $6 Imports & Craft Beers ; Half Off Pizza and Appetizers",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Pint House",
+    "title": "",
+    "time_label": "6pm-Close",
+    "details": "$0.75 Wings ; 5 for $15 Beer Buckets ; $5 Espresso Martini (All Day)",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Pint House",
+    "title": "",
+    "time_label": "7pm-Close",
+    "details": "$5 Burger and Fries ; $5 Mac & Cheese ; $5 Long Islands ; $3 Draft Beers",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "The Go Go",
+    "title": "BINGO night",
+    "time_label": "8pm-Unsure",
+    "details": "",
+    "area": "Short North",
+    "listing_kind": "event",
+    "type_labels": [
+      "Event"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Draft Kings",
+    "title": "",
+    "time_label": "4pm-9pm",
+    "details": "$3 Mondays: $3 Fireball, Rumple, Green Tea, & White Tea Shots, Well drinks, 16oz Domestic Beers",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      1
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Galla Park",
+    "title": "Ladies Night",
+    "time_label": "Unsure-Close",
+    "details": "2 for 1 Espresso Martinis ; $15 Mamitas Bucket",
+    "area": "Short North",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "Happy Hour",
+    "time_label": "Open-Close",
+    "details": "$1 Wings ; $9 One Topping Pizza",
+    "area": "Grandview / Breweries",
+    "listing_kind": "food",
+    "type_labels": [
+      "Food Special"
+    ],
+    "days_of_week": [
+      1
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$2 Tenders ; $2 Busch Light ; 1/2 Off Wine Bottles",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      2
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$10 Smashburger ; $5 Craft Drafts ; $5 Crown Royal Shots",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      3
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$10 Wrap & Fries ; $5 Espolon Blanco Shots ; $5 Suncruiser ; $15 Clase Azul",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      4
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$10 Sicilian & Fries ; $8 Espresso Martini ; $4 Green Tea & White Tea Shots",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      5
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$8 Dip Trio; $7 House Margarita ; $5 Three Olives Bombs",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      6
+    ],
+    "priority": 0,
+    "is_active": true
+  },
+  {
+    "venue_name": "Yogi's",
+    "title": "",
+    "time_label": "Open-Close",
+    "details": "$1 Wings ; $15 Garage Beer Buckets (5) ; $5 Blue Gatorade Shot",
+    "area": "Grandview / Breweries",
+    "listing_kind": "deal",
+    "type_labels": [
+      "Drink Special",
+      "Food Special"
+    ],
+    "days_of_week": [
+      0
+    ],
+    "priority": 0,
+    "is_active": true
+  }
+]

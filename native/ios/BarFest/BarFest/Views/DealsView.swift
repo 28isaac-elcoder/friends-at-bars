@@ -56,25 +56,23 @@ struct DealsView: View {
                         .foregroundStyle(.primary)
                     }
 
-                    Text("Weekly specials and events. Use day and area filters above.")
+                    Text("Weekly specials and events. Use day and area filters above. Showing \(filteredListings.count) of \(appModel.listings.count).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    // Area filters (green box region)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            areaChip(title: "All", selected: showAllAreas) {
-                                showAllAreas = true
-                                areaFilter = nil
-                            }
-                            ForEach(CampusArea.allCases) { area in
-                                areaChip(
-                                    title: shortArea(area),
-                                    selected: !showAllAreas && areaFilter == area
-                                ) {
-                                    showAllAreas = false
-                                    areaFilter = area
-                                }
+                    // Area filters — horizontal-only (no vertical rubber-band)
+                    HorizontalChipScroll {
+                        areaChip(title: "All", selected: showAllAreas) {
+                            showAllAreas = true
+                            areaFilter = nil
+                        }
+                        ForEach(CampusArea.allCases) { area in
+                            areaChip(
+                                title: shortArea(area),
+                                selected: !showAllAreas && areaFilter == area
+                            ) {
+                                showAllAreas = false
+                                areaFilter = area
                             }
                         }
                     }

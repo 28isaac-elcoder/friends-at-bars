@@ -72,7 +72,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={tab === "listings" ? "app-shell wide" : "app-shell"}>
       <header>
         <div>
           <h1>Bar Fest CMS</h1>

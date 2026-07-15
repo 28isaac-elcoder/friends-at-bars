@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct LogView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -6,6 +7,7 @@ struct LogView: View {
     @ObservedObject private var testMode = TestModeStore.shared
     @State private var filter = "all"
     @State private var statusText = ""
+    @State private var copyFlash: String?
 
     private var filtered: [DiagnosticEntry] {
         let list = log.entries.reversed()
@@ -16,23 +18,30 @@ struct LogView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(["all", "location", "system", "chat", "error"], id: \.self) { cat in
-                            Button(cat) { filter = cat }
-                                .buttonStyle(.bordered)
-                                .tint(filter == cat ? .accentColor : .secondary)
-                        }
+                HorizontalChipScroll {
+                    ForEach(["all", "location", "system", "chat", "error"], id: \.self) { cat in
+                        Button(cat) { filter = cat }
+                            .buttonStyle(.bordered)
+                            .tint(filter == cat ? .accentColor : .secondary)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
 
                 Text(statusText)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
                     .padding(.bottom, 6)
+                    .textSelection(.enabled)
+
+                if let copyFlash {
+                    Text(copyFlash)
+                        .font(.caption2)
+                        .foregroundStyle(.cyan)
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                }
 
                 List(filtered) { entry in
                     VStack(alignment: .leading, spacing: 2) {
@@ -48,18 +57,48 @@ struct LogView: View {
                         Text(entry.message)
                             .font(.caption.monospaced())
                             .foregroundStyle(entry.level == "error" ? .red : .primary)
+                            .textSelection(.enabled)
                     }
                     .padding(.vertical, 2)
+                    .contextMenu {
+                        Button("Copy line") {
+                            copyText(formatEntry(entry), flash: "Copied line")
+                        }
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button("Copy") {
+                            copyText(formatEntry(entry), flash: "Copied line")
+                        }
+                        .tint(.blue)
+                    }
                 }
                 .listStyle(.plain)
             }
             .navigationTitle("Log")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Clear") { log.clear() }
-                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Refresh") { refreshStatus() }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Copy filtered (\(filtered.count))") {
+                            copyText(filtered.map(formatEntry).joined(separator: "\n"), flash: "Copied filtered")
+                        }
+                        Button("Copy all (\(log.entries.count))") {
+                            copyText(
+                                log.entries.reversed().map(formatEntry).joined(separator: "\n"),
+                                flash: "Copied all"
+                            )
+                        }
+                        Button("Copy status + filtered") {
+                            let body = [statusText, "", filtered.map(formatEntry).joined(separator: "\n")]
+                                .joined(separator: "\n")
+                            copyText(body, flash: "Copied status + log")
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    Button("Clear") { log.clear() }
                 }
             }
             .task {
@@ -69,18 +108,34 @@ struct LogView: View {
         }
     }
 
+    private func formatEntry(_ entry: DiagnosticEntry) -> String {
+        let df = ISO8601DateFormatter()
+        return "[\(df.string(from: entry.date))] \(entry.level.uppercased()) \(entry.category): \(entry.message)"
+    }
+
+    private func copyText(_ text: String, flash: String) {
+        UIPasteboard.general.string = text
+        copyFlash = flash
+        DiagnosticLog.shared.append(category: "system", message: flash)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copyFlash == flash { copyFlash = nil }
+        }
+    }
+
     private func refreshStatus() {
         let engine = VenueLiveLocationEngine.shared.currentState()
         let uid = AnonymousIdentity.userId()
         let prefix = String(uid.prefix(20))
+        let auth = LocationAuthorizationStore.shared.status.rawValue
         statusText = """
         bundle=\(Bundle.main.bundleIdentifier ?? "?")
         userId=\(prefix)…
         lastVenue=\(appModel.lastVenueName ?? "nil")
         engineRunning=\(engine.isRunning) lastWrite=\(engine.lastWriteAtMs)
+        locationAuth=\(auth)
         testModeMock=\(testMode.useMockCheckIns) simLoc=\(testMode.simulateLocationAllowed)
         supabaseURL=\(AppConfig.supabaseURL.prefix(40))…
-        venues=\(appModel.venues.count)
+        venues=\(appModel.venues.count) listings=\(appModel.listings.count)
         """
         DiagnosticLog.shared.append(category: "system", message: "Status refresh")
     }

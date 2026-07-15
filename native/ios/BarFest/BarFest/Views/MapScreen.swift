@@ -4,6 +4,7 @@ import SwiftUI
 struct MapScreen: View {
     @EnvironmentObject private var appModel: AppModel
     @ObservedObject private var testMode = TestModeStore.shared
+    @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 40.002, longitude: -83.008),
@@ -13,32 +14,37 @@ struct MapScreen: View {
 
     var body: some View {
         NavigationStack {
-            Map(position: $position) {
-                ForEach(appModel.venues) { venue in
-                    Annotation(venue.name, coordinate: CLLocationCoordinate2D(
-                        latitude: venue.latitude,
-                        longitude: venue.longitude
-                    )) {
-                        VStack(spacing: 2) {
-                            if let count = appModel.venueCounts[venue.name], count > 0 {
-                                Text("\(count)")
-                                    .font(.caption2.bold())
-                                    .padding(4)
-                                    .background(.green.opacity(0.9))
-                                    .foregroundStyle(.white)
-                                    .clipShape(Capsule())
+            ZStack {
+                Map(position: $position) {
+                    ForEach(appModel.venues) { venue in
+                        Annotation(venue.name, coordinate: CLLocationCoordinate2D(
+                            latitude: venue.latitude,
+                            longitude: venue.longitude
+                        )) {
+                            VStack(spacing: 2) {
+                                if let count = appModel.venueCounts[venue.name], count > 0 {
+                                    Text("\(count)")
+                                        .font(.caption2.bold())
+                                        .padding(4)
+                                        .background(.green.opacity(0.9))
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundStyle(venue.is_test ? .orange : .red)
+                                    .font(.title2)
                             }
-                            Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(venue.is_test ? .orange : .red)
-                                .font(.title2)
                         }
                     }
+                    UserAnnotation()
                 }
-                UserAnnotation()
-            }
-            .mapControls {
-                MapUserLocationButton()
-                MapCompass()
+                .mapControls {
+                    MapUserLocationButton()
+                    MapCompass()
+                }
+                .disabled(!locationAuth.isAuthorized)
+
+                LocationAllowOverlay()
             }
             .navigationTitle(testMode.useMockCheckIns ? "Map (Test Mode)" : "Map")
             .toolbar {
@@ -54,6 +60,7 @@ struct MapScreen: View {
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog() }
             }
+            .onAppear { locationAuth.refresh() }
         }
     }
 }

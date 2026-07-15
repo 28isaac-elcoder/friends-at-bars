@@ -3,27 +3,52 @@ import SwiftUI
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @ObservedObject private var testMode = TestModeStore.shared
+    @ObservedObject private var localChat = TestChatStore.shared
+    @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
+
     @State private var posts: [ChatPost] = []
     @State private var sort = "recent"
     @State private var draft = ""
     @State private var error: String?
+    @State private var selectMode = false
+    @State private var selectedIds: Set<UUID> = []
     @FocusState private var composerFocused: Bool
 
+    private var useLocal: Bool { testMode.uiEnabled && testMode.useMockCheckIns }
     private var remaining: Int { AppConfig.maxChatChars - draft.count }
 
-    /// Live venue from engine, unless Test Mode simulates location off.
-    private var atVenue: Bool {
-        if testMode.uiEnabled && !testMode.simulateLocationAllowed {
-            return false
+    private var venueOptions: [CatalogVenue] {
+        appModel.venues.sorted {
+            if $0.area != $1.area { return $0.area < $1.area }
+            return $0.name < $1.name
         }
-        return appModel.lastVenueName != nil
+    }
+
+    /// Production: need OS location + at a bar. Test local: gated by simulateLocationAllowed.
+    private var needLocationGate: Bool {
+        if useLocal { return !testMode.simulateLocationAllowed }
+        return !locationAuth.isAuthorized
+    }
+
+    private var atVenue: Bool {
+        if useLocal {
+            return testMode.simulateLocationAllowed
+                && !localChat.simulatedVenueName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return locationAuth.isAuthorized && appModel.lastVenueName != nil
     }
 
     private var effectiveVenueName: String? {
-        if testMode.uiEnabled && !testMode.simulateLocationAllowed {
-            return nil
+        if useLocal {
+            guard testMode.simulateLocationAllowed else { return nil }
+            let v = localChat.simulatedVenueName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return v.isEmpty ? nil : v
         }
         return appModel.lastVenueName
+    }
+
+    private var displayedPosts: [ChatPost] {
+        useLocal ? localChat.feed(sort: sort) : posts
     }
 
     var body: some View {
@@ -36,7 +61,7 @@ struct ChatView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    if testMode.uiEnabled {
+                    if useLocal {
                         Button {
                             testMode.simulateLocationAllowed.toggle()
                             DiagnosticLog.shared.append(
@@ -48,11 +73,17 @@ struct ChatView: View {
                                   ? "location.fill"
                                   : "location.slash")
                         }
-                        .accessibilityLabel(
-                            testMode.simulateLocationAllowed
-                                ? "Simulate location on"
-                                : "Simulate location off"
-                        )
+
+                        Button {
+                            if selectMode {
+                                exitSelectMode()
+                            } else {
+                                selectMode = true
+                            }
+                        } label: {
+                            Image(systemName: selectMode ? "xmark" : "list.bullet")
+                        }
+                        .accessibilityLabel(selectMode ? "Exit select mode" : "Select messages")
                     }
                 }
                 .padding()
@@ -60,39 +91,51 @@ struct ChatView: View {
                     Task { await load() }
                 }
 
-                List(posts) { post in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(post.body)
-                            .font(.body)
-                        HStack {
-                            Text(post.venue_name)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(post.score)")
-                                .monospacedDigit()
-                            Button("↑") {
-                                Task { try? await ChatService.setVote(postId: post.id, direction: "up"); await load() }
-                            }
-                            .buttonStyle(.borderless)
-                            Button("↓") {
-                                Task { try? await ChatService.setVote(postId: post.id, direction: "down"); await load() }
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        if post.author_id == AnonymousIdentity.userId() {
-                            Button("Delete", role: .destructive) {
-                                Task { try? await ChatService.hideOwn(postId: post.id); await load() }
-                            }
+                if selectMode && useLocal {
+                    HStack {
+                        Text("\(selectedIds.count) selected")
                             .font(.caption)
-                        } else {
-                            Button("Report") {
-                                Task { try? await ChatService.report(postId: post.id, reason: nil); await load() }
-                            }
-                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            localChat.forceVote(postIds: Array(selectedIds), direction: "up")
+                            exitSelectMode()
+                        } label: {
+                            Image(systemName: "chevron.up")
                         }
+                        .disabled(selectedIds.isEmpty)
+                        Button {
+                            localChat.forceVote(postIds: Array(selectedIds), direction: "down")
+                            exitSelectMode()
+                        } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .disabled(selectedIds.isEmpty)
+                        Button(role: .destructive) {
+                            localChat.hide(postIds: Array(selectedIds))
+                            exitSelectMode()
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .disabled(selectedIds.isEmpty)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+
+                if useLocal && !selectMode {
+                    Text("Local test feed")
+                        .font(.caption2)
+                        .foregroundStyle(.cyan)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                }
+
+                List {
+                    ForEach(displayedPosts) { post in
+                        chatRow(post)
+                    }
                 }
                 .listStyle(.plain)
 
@@ -103,16 +146,180 @@ struct ChatView: View {
                         .padding(.horizontal)
                 }
 
+                composer
+            }
+            .navigationTitle("Chat")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if useLocal {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Clear local") {
+                            localChat.clearAll()
+                            exitSelectMode()
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+            .task {
+                await load()
+                if useLocal, !venueOptions.isEmpty {
+                    let names = Set(venueOptions.map(\.name))
+                    if !names.contains(localChat.simulatedVenueName) {
+                        localChat.simulatedVenueName =
+                            venueOptions.first(where: { $0.name == "Test Location 1" })?.name
+                            ?? venueOptions[0].name
+                    }
+                }
+            }
+            .refreshable { await load() }
+            .onChange(of: testMode.useMockCheckIns) { _, _ in
+                exitSelectMode()
+                Task { await load() }
+            }
+            .onChange(of: localChat.posts.count) { _, _ in
+                if useLocal { posts = localChat.feed(sort: sort) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func chatRow(_ post: ChatPost) -> some View {
+        let isOwn = post.author_id == AnonymousIdentity.userId()
+        HStack(alignment: .top, spacing: 10) {
+            if selectMode && useLocal {
+                Image(systemName: selectedIds.contains(post.id) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selectedIds.contains(post.id) ? Color.accentColor : .secondary)
+                    .onTapGesture { toggleSelect(post.id) }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(post.body)
+                    .font(.body)
+                HStack {
+                    Text(post.venue_name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if post.author_id == TestChatStore.otherAuthorId {
+                        Text("other")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    Spacer()
+                    Text("\(post.score)")
+                        .monospacedDigit()
+                    if !(selectMode && useLocal) {
+                        Button("↑") {
+                            Task { await vote(postId: post.id, direction: "up") }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isOwn)
+                        Button("↓") {
+                            Task { await vote(postId: post.id, direction: "down") }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isOwn)
+                    }
+                }
+                if !(selectMode && useLocal) {
+                    if isOwn {
+                        Button("Delete", role: .destructive) {
+                            Task { await hideOwn(postId: post.id) }
+                        }
+                        .font(.caption)
+                    } else if !useLocal {
+                        Button("Report") {
+                            Task {
+                                try? await ChatService.report(postId: post.id, reason: nil)
+                                await load()
+                            }
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if selectMode && useLocal { toggleSelect(post.id) }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if useLocal && testMode.simulateLocationAllowed {
+                HStack(spacing: 8) {
+                    Text("Send as")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Picker("Sender", selection: $localChat.sender) {
+                        ForEach(TestChatStore.Sender.allCases) { s in
+                            Text(s.label).tag(s)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 200)
+                }
+
+                HStack {
+                    Text("Bar")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Picker("Bar", selection: $localChat.simulatedVenueName) {
+                        ForEach(venueOptions) { v in
+                            Text("\(v.name)").tag(v.name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            if needLocationGate {
+                Button {
+                    if useLocal {
+                        testMode.simulateLocationAllowed = true
+                    } else {
+                        locationAuth.requestAllowLocation()
+                    }
+                } label: {
+                    Text(
+                        useLocal
+                            ? "Allow Location to Chat — tap to enable (simulate)"
+                            : "Allow Location to Chat — tap to enable"
+                    )
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            } else if !useLocal && !atVenue {
+                Text("Must be at a Bar to Chat")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                if !useLocal, let venue = effectiveVenueName {
+                    Text("Posting from \(venue)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField(
-                        atVenue ? "Say something…" : "Must be at a bar to chat",
+                        placeholder,
                         text: $draft,
                         axis: .vertical
                     )
                     .lineLimit(1 ... 4)
                     .font(.system(size: 17))
                     .focused($composerFocused)
-                    .disabled(!atVenue)
                     .padding(10)
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -123,9 +330,12 @@ struct ChatView: View {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 32))
                     }
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !atVenue || remaining < 0)
+                    .disabled(
+                        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || !atVenue
+                            || remaining < 0
+                    )
                 }
-                .padding()
                 .overlay(alignment: .topTrailing) {
                     if remaining < 0 {
                         Text("150 Character Limit")
@@ -136,14 +346,36 @@ struct ChatView: View {
                     }
                 }
             }
-            .navigationTitle("Chat")
-            .navigationBarTitleDisplayMode(.inline)
-            .task { await load() }
-            .refreshable { await load() }
         }
+        .padding()
+    }
+
+    private var placeholder: String {
+        if useLocal && localChat.sender == .other {
+            return "Message as another user…"
+        }
+        if let venue = effectiveVenueName {
+            return "What's happening at \(venue)?"
+        }
+        return "Say something…"
+    }
+
+    private func exitSelectMode() {
+        selectMode = false
+        selectedIds = []
+    }
+
+    private func toggleSelect(_ id: UUID) {
+        if selectedIds.contains(id) { selectedIds.remove(id) }
+        else { selectedIds.insert(id) }
     }
 
     private func load() async {
+        if useLocal {
+            posts = localChat.feed(sort: sort)
+            error = nil
+            return
+        }
         do {
             posts = try await ChatService.fetchFeed(sort: sort)
             error = nil
@@ -157,9 +389,32 @@ struct ChatView: View {
         }
     }
 
+    private func vote(postId: UUID, direction: String) async {
+        do {
+            if useLocal {
+                try localChat.setVote(postId: postId, direction: direction)
+            } else {
+                try await ChatService.setVote(postId: postId, direction: direction)
+                await load()
+            }
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func hideOwn(postId: UUID) async {
+        if useLocal {
+            localChat.hide(postIds: [postId])
+        } else {
+            try? await ChatService.hideOwn(postId: postId)
+            await load()
+        }
+    }
+
     private func send() async {
         guard let venue = effectiveVenueName else {
-            error = "Must be at a Bar to Chat"
+            error = needLocationGate ? "Allow Location to Chat" : "Must be at a Bar to Chat"
             return
         }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -169,11 +424,19 @@ struct ChatView: View {
             return
         }
         do {
-            try await ChatService.createPost(body: trimmed, venueName: venue)
-            draft = ""
-            composerFocused = false
-            DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venue)")
-            await load()
+            if useLocal {
+                try localChat.createPost(body: trimmed)
+                draft = ""
+                composerFocused = false
+                DiagnosticLog.shared.append(category: "chat", message: "Local post at \(venue)")
+            } else {
+                try await ChatService.createPost(body: trimmed, venueName: venue)
+                draft = ""
+                composerFocused = false
+                DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venue)")
+                await load()
+            }
+            error = nil
         } catch {
             self.error = error.localizedDescription
             DiagnosticLog.shared.append(

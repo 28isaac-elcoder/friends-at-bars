@@ -7,14 +7,17 @@ Hybrid content pipeline for Bar Fest: **native / Capacitor apps read catalog JSO
 ### 1. Supabase SQL (run in order)
 
 1. [`supabase/catalog_setup.sql`](../supabase/catalog_setup.sql) — tables, RLS, version bump triggers  
-2. [`supabase/catalog_seed.sql`](../supabase/catalog_seed.sql) — seed venues + Switch Search words  
+2. [`supabase/catalog_seed.sql`](../supabase/catalog_seed.sql) — seed **venues + all web weekly deals/events (~47)** + Switch Search words  
 
-Regenerate seed anytime:
+Regenerate seed anytime (pulls from `scripts/weeklyListings.seed.mjs`, kept in sync with `src/data/dealsAndEvents.ts`):
 
 ```bash
 node scripts/generate-catalog-seed.mjs
 ```
 
+Then re-run `catalog_seed.sql` in the Supabase SQL editor (or use Admin CMS → Deals / Events → **Import web listings**).
+
+**Native Deals tab** only shows rows in `catalog_listings`. If you only see ~5 deals, the DB still has the old sample seed — re-import the full set.
 ### 2. Admin auth
 
 Create a Supabase Auth user for editors (Dashboard → Authentication).  

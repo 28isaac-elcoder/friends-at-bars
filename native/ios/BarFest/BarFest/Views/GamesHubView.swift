@@ -1,9 +1,21 @@
 import SwiftUI
 
 struct GamesHubView: View {
+    @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
+
     var body: some View {
         NavigationStack {
             List {
+                if !locationAuth.isAuthorized {
+                    Section {
+                        LocationAllowStrip(
+                            label: "Tap here to allow Location — ranked games need you at a bar."
+                        )
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(Color.clear)
+                    }
+                }
+
                 NavigationLink("Ride the Bus") {
                     RideTheBusView()
                 }

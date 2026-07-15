@@ -34,6 +34,8 @@ struct ActivitiesView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    LocationAllowStrip()
+
                     if testMode.useMockCheckIns {
                         Text("Test Mode: showing mock headcounts")
                             .font(.caption)
@@ -80,32 +82,30 @@ struct ActivitiesView: View {
                             }
                         }
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(CampusArea.allCases) { area in
-                                    Button {
-                                        if areaFilter == area {
-                                            areaFilter = nil
-                                            populationSort = .mostPopulated
-                                        } else {
-                                            areaFilter = area
-                                            populationSort = .mostPopulated
-                                        }
-                                    } label: {
-                                        Text(shortAreaLabel(area))
-                                            .font(.caption.weight(.semibold))
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 7)
-                                            .background(
-                                                areaFilter == area
-                                                    ? Color.accentColor.opacity(0.35)
-                                                    : Color.white.opacity(0.1)
-                                            )
-                                            .foregroundStyle(areaFilter == area ? Color.accentColor : .primary)
-                                            .clipShape(Capsule())
+                        HorizontalChipScroll {
+                            ForEach(CampusArea.allCases) { area in
+                                Button {
+                                    if areaFilter == area {
+                                        areaFilter = nil
+                                        populationSort = .mostPopulated
+                                    } else {
+                                        areaFilter = area
+                                        populationSort = .mostPopulated
                                     }
-                                    .buttonStyle(.plain)
+                                } label: {
+                                    Text(shortAreaLabel(area))
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 7)
+                                        .background(
+                                            areaFilter == area
+                                                ? Color.accentColor.opacity(0.35)
+                                                : Color.white.opacity(0.1)
+                                        )
+                                        .foregroundStyle(areaFilter == area ? Color.accentColor : .primary)
+                                        .clipShape(Capsule())
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
