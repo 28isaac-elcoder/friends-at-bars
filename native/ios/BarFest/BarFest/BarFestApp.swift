@@ -90,6 +90,7 @@ final class AppModel: ObservableObject {
 }
 
 /// Wires catalog venues into VenueLiveLocationEngine.
+@MainActor
 final class LocationBridge: VenueLiveLocationEngineDelegate {
     private var onVenue: ((String?) -> Void)?
 
@@ -111,18 +112,14 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             )
             VenueLiveLocationEngine.shared.eventDelegate = self
             LocationAuthorizationStore.shared.softStartTrackingIfPossible()
-            Task { @MainActor in
-                DiagnosticLog.shared.append(category: "location", message: "Tracking start requested")
-            }
+            DiagnosticLog.shared.append(category: "location", message: "Tracking start requested")
         } catch {
             print("LocationBridge start: \(error)")
-            Task { @MainActor in
-                DiagnosticLog.shared.append(
-                    category: "location",
-                    message: "Tracking start failed: \(error.localizedDescription)",
-                    level: "error"
-                )
-            }
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "Tracking start failed: \(error.localizedDescription)",
+                level: "error"
+            )
         }
     }
 
@@ -142,7 +139,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         )
     }
 
-    func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {
+    nonisolated func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {
         Task { @MainActor in
             DiagnosticLog.shared.append(
                 category: "location",
@@ -151,7 +148,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 
-    func engine(
+    nonisolated func engine(
         _ engine: VenueLiveLocationEngine,
         willWrite action: String,
         venueName: String,
@@ -166,9 +163,9 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 
-    func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?) {
-        onVenue?(venueName)
+    nonisolated func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?) {
         Task { @MainActor in
+            self.onVenue?(venueName)
             DiagnosticLog.shared.append(
                 category: "location",
                 message: "didWrite \(action) venue=\(venueName ?? "nil")"
@@ -176,7 +173,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 
-    func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
+    nonisolated func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
         print("live location write failed: \(message)")
         Task { @MainActor in
             DiagnosticLog.shared.append(
@@ -187,9 +184,9 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 
-    func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine) {
-        onVenue?(nil)
+    nonisolated func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine) {
         Task { @MainActor in
+            self.onVenue?(nil)
             DiagnosticLog.shared.append(
                 category: "location",
                 message: "Lost Always authorization",
