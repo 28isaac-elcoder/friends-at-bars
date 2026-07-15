@@ -193,34 +193,34 @@ struct ChatView: View {
                     .onTapGesture { toggleSelect(post.id) }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(post.body)
                     .font(.body)
-                HStack {
-                    Text(post.venue_name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if post.author_id == TestChatStore.otherAuthorId {
-                        Text("other")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(post.venue_name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if post.author_id == TestChatStore.otherAuthorId {
+                            Text("other")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
                     }
-                    Spacer()
-                    Text("\(post.score)")
-                        .monospacedDigit()
+                    Spacer(minLength: 8)
                     if !(selectMode && useLocal) {
-                        Button("↑") {
-                            Task { await vote(postId: post.id, direction: "up") }
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(isOwn)
-                        Button("↓") {
-                            Task { await vote(postId: post.id, direction: "down") }
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(isOwn)
+                        RedditVotePill(
+                            score: post.score,
+                            myVote: post.my_vote,
+                            disabled: isOwn,
+                            onUp: { Task { await vote(postId: post.id, direction: "up") } },
+                            onDown: { Task { await vote(postId: post.id, direction: "down") } }
+                        )
                     }
                 }
+
                 if !(selectMode && useLocal) {
                     if isOwn {
                         Button("Delete", role: .destructive) {
@@ -243,7 +243,7 @@ struct ChatView: View {
                 if selectMode && useLocal { toggleSelect(post.id) }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder

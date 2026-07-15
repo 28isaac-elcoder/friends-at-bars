@@ -65,19 +65,56 @@ final class AppModel: ObservableObject {
             }
             locationBridge.updateVenues(venues)
             errorMessage = nil
-            DiagnosticLog.shared.append(
-                category: "system",
-                message: "Catalog refresh venues=\(venues.count) listings=\(listings.count) mock=\(TestModeStore.shared.useMockCheckIns)"
-            )
+            await logCatalogDiagnostics(source: "refresh")
         } catch {
             errorMessage = error.localizedDescription
             venues = await CatalogStore.shared.venues
+            listings = await CatalogStore.shared.listings
             DiagnosticLog.shared.append(
                 category: "error",
                 message: "Catalog refresh failed: \(error.localizedDescription)",
                 level: "error"
             )
+            await logCatalogDiagnostics(source: "refresh-failed-partial")
         }
+    }
+
+    /// Logs listing/venue breakdown to help diagnose Deals showing fewer rows than expected.
+    private func logCatalogDiagnostics(source: String) async {
+        let includeTest = DevTestMode.isUIEnabled || TestModeStore.shared.useMockCheckIns
+        let version = await CatalogStore.shared.contentVersion.map(String.init) ?? "nil"
+        let areas = Dictionary(grouping: listings, by: \.area).mapValues(\.count)
+        let areaSummary = areas.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        let withPriority = listings.filter { $0.priority > 0 }.count
+        let venuesSample = listings.prefix(8).map(\.venue_name).joined(separator: ", ")
+        let hint: String
+        if listings.count <= 6 {
+            hint = "HINT: only \(listings.count) rows in Supabase — re-run catalog_seed.sql or CMS Import web listings (47)"
+        } else if listings.count < 40 {
+            hint = "HINT: partial catalog (\(listings.count)/47 expected) — check Supabase catalog_listings"
+        } else {
+            hint = "catalog looks complete"
+        }
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: """
+            Catalog[\(source)] venues=\(venues.count) listings=\(listings.count) \
+            priority=\(withPriority) version=\(version) includeTest=\(includeTest) mock=\(TestModeStore.shared.useMockCheckIns)
+            """
+        )
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Catalog areas: \(areaSummary.isEmpty ? "(none)" : areaSummary)"
+        )
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Catalog sample venues: \(venuesSample.isEmpty ? "(none)" : venuesSample)"
+        )
+        DiagnosticLog.shared.append(category: "system", message: hint)
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Supabase host: \(AppConfig.supabaseURL)"
+        )
     }
 
     private func mockVenueCounts(from venues: [CatalogVenue]) -> [String: Int] {
@@ -112,7 +149,12 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             )
             VenueLiveLocationEngine.shared.eventDelegate = self
             LocationAuthorizationStore.shared.softStartTrackingIfPossible()
-            DiagnosticLog.shared.append(category: "location", message: "Tracking start requested")
+            let auth = LocationAuthorizationStore.shared.status.rawValue
+            let uid = String(AnonymousIdentity.userId().prefix(12))
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "Tracking start requested venues=\(records.count) auth=\(auth) userId=\(uid)… radius=\(Int(AppConfig.venueRadiusMeters))m"
+            )
         } catch {
             print("LocationBridge start: \(error)")
             DiagnosticLog.shared.append(

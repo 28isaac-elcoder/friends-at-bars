@@ -110,3 +110,59 @@ struct HorizontalChipScroll<Content: View>: View {
         .clipped()
     }
 }
+
+/// Inline Activities gate — replaces bar list when location is off (reference app style).
+struct ActivitiesLocationInlineGate: View {
+    @ObservedObject private var auth = LocationAuthorizationStore.shared
+    @State private var busy = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "map.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(.white.opacity(0.9))
+                .symbolRenderingMode(.hierarchical)
+
+            Text(
+                "Location access is disabled. To find bars in your area and see how busy they are, please enable location services in your settings. It will never be shared."
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 8)
+
+            Button {
+                busy = true
+                auth.requestAllowLocation()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    busy = false
+                }
+            } label: {
+                Text(busy ? "Opening…" : "Open Settings")
+                    .font(.headline)
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+            .padding(.horizontal, 24)
+
+            if let msg = auth.lastPromptMessage {
+                Text(msg)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+    }
+}

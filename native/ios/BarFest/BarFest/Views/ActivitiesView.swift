@@ -3,6 +3,7 @@ import SwiftUI
 struct ActivitiesView: View {
     @EnvironmentObject private var appModel: AppModel
     @ObservedObject private var testMode = TestModeStore.shared
+    @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
     @State private var checkIns: [CheckInRow] = []
     @State private var error: String?
     @State private var populationSort: PopulationSort = .mostPopulated
@@ -30,12 +31,15 @@ struct ActivitiesView: View {
         return list
     }
 
+    /// Show live bar headcounts when OS location is allowed (mock mode still uses mock counts).
+    private var showBarAttendance: Bool {
+        locationAuth.isAuthorized
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    LocationAllowStrip()
-
                     if testMode.useMockCheckIns {
                         Text("Test Mode: showing mock headcounts")
                             .font(.caption)
@@ -44,7 +48,6 @@ struct ActivitiesView: View {
 
                     PriorityDealsCarousel(items: priorityDeals)
 
-                    // Sort + area filters (replaces bulky "Live headcounts" header chrome)
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
                             Menu {
@@ -68,6 +71,7 @@ struct ActivitiesView: View {
                                     .background(Color.white.opacity(0.1))
                                     .clipShape(Capsule())
                             }
+                            .disabled(!showBarAttendance)
 
                             if areaFilter != nil {
                                 Button {
@@ -82,30 +86,32 @@ struct ActivitiesView: View {
                             }
                         }
 
-                        HorizontalChipScroll {
-                            ForEach(CampusArea.allCases) { area in
-                                Button {
-                                    if areaFilter == area {
-                                        areaFilter = nil
-                                        populationSort = .mostPopulated
-                                    } else {
-                                        areaFilter = area
-                                        populationSort = .mostPopulated
+                        if showBarAttendance {
+                            HorizontalChipScroll {
+                                ForEach(CampusArea.allCases) { area in
+                                    Button {
+                                        if areaFilter == area {
+                                            areaFilter = nil
+                                            populationSort = .mostPopulated
+                                        } else {
+                                            areaFilter = area
+                                            populationSort = .mostPopulated
+                                        }
+                                    } label: {
+                                        Text(shortAreaLabel(area))
+                                            .font(.caption.weight(.semibold))
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 7)
+                                            .background(
+                                                areaFilter == area
+                                                    ? Color.accentColor.opacity(0.35)
+                                                    : Color.white.opacity(0.1)
+                                            )
+                                            .foregroundStyle(areaFilter == area ? Color.accentColor : .primary)
+                                            .clipShape(Capsule())
                                     }
-                                } label: {
-                                    Text(shortAreaLabel(area))
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 7)
-                                        .background(
-                                            areaFilter == area
-                                                ? Color.accentColor.opacity(0.35)
-                                                : Color.white.opacity(0.1)
-                                        )
-                                        .foregroundStyle(areaFilter == area ? Color.accentColor : .primary)
-                                        .clipShape(Capsule())
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -113,32 +119,36 @@ struct ActivitiesView: View {
                     Text(areaFilter == nil ? "Bars" : areaFilter!.rawValue)
                         .font(.headline)
 
-                    LazyVStack(spacing: 0) {
-                        ForEach(filteredVenues) { venue in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(venue.name)
-                                        .font(.body.weight(.medium))
-                                    Text(venue.area)
-                                        .font(.caption2)
+                    if showBarAttendance {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredVenues) { venue in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(venue.name)
+                                            .font(.body.weight(.medium))
+                                        Text(venue.area)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text("\(appModel.venueCounts[venue.name, default: 0])")
+                                        .font(.body.monospacedDigit().weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
-                                Spacer()
-                                Text("\(appModel.venueCounts[venue.name, default: 0])")
-                                    .font(.body.monospacedDigit().weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 14)
+                                Divider().opacity(0.35)
                             }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 14)
-                            Divider().opacity(0.35)
                         }
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                    } else {
+                        ActivitiesLocationInlineGate()
                     }
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
 
-                    if !testMode.useMockCheckIns {
+                    if showBarAttendance && !testMode.useMockCheckIns {
                         Text("Recent check-ins")
                             .font(.headline)
                             .padding(.top, 4)
@@ -147,8 +157,10 @@ struct ActivitiesView: View {
                         }
                         ForEach(checkIns.prefix(10)) { row in
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(row.venue_name).font(.subheadline.weight(.semibold))
-                                Text(row.created_at).font(.caption2).foregroundStyle(.secondary)
+                                Text(row.venue).font(.subheadline.weight(.semibold))
+                                Text(row.displaySubtitle)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
@@ -164,6 +176,7 @@ struct ActivitiesView: View {
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
             }
+            .onAppear { locationAuth.refresh() }
         }
     }
 

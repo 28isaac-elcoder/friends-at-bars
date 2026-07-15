@@ -79,25 +79,17 @@ struct LogView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Refresh") { refreshStatus() }
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Copy filtered (\(filtered.count))") {
-                            copyText(filtered.map(formatEntry).joined(separator: "\n"), flash: "Copied filtered")
-                        }
-                        Button("Copy all (\(log.entries.count))") {
-                            copyText(
-                                log.entries.reversed().map(formatEntry).joined(separator: "\n"),
-                                flash: "Copied all"
-                            )
-                        }
-                        Button("Copy status + filtered") {
-                            let body = [statusText, "", filtered.map(formatEntry).joined(separator: "\n")]
-                                .joined(separator: "\n")
-                            copyText(body, flash: "Copied status + log")
-                        }
+                ToolbarItem(placement: .principal) {
+                    Button {
+                        copyVisibleLogs()
                     } label: {
-                        Image(systemName: "doc.on.doc")
+                        Label("Copy", systemImage: "doc.on.doc")
+                            .font(.subheadline.weight(.semibold))
                     }
+                    .disabled(filtered.isEmpty)
+                    .accessibilityLabel("Copy visible logs (\(filtered.count))")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Clear") { log.clear() }
                 }
             }
@@ -106,6 +98,12 @@ struct LogView: View {
                 refreshStatus()
             }
         }
+    }
+
+    private func copyVisibleLogs() {
+        let filterLabel = filter == "all" ? "all" : filter
+        let body = filtered.map(formatEntry).joined(separator: "\n")
+        copyText(body, flash: "Copied \(filtered.count) \(filterLabel) log\(filtered.count == 1 ? "" : "s")")
     }
 
     private func formatEntry(_ entry: DiagnosticEntry) -> String {

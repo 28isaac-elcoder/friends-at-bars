@@ -126,13 +126,19 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     func startTracking() throws {
         let status = manager.authorizationStatus
         guard status == .authorizedAlways else {
+            let message =
+                "Always location permission is required for background live tracking (status=\(status.rawValue))."
+            DispatchQueue.main.async {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: message,
+                    level: "warn"
+                )
+            }
             throw NSError(
                 domain: "BarFestNativeLiveLocation",
                 code: 1,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Always location permission is required for background live tracking."
-                ]
+                userInfo: [NSLocalizedDescriptionKey: message]
             )
         }
 
@@ -140,6 +146,15 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         manager.allowsBackgroundLocationUpdates = true
         manager.startUpdatingLocation()
         isRunning = true
+        let auth = manager.authorizationStatus.rawValue
+        let venueCount = queue.sync { venues.count }
+        let uidPrefix = String(userId.prefix(12))
+        DispatchQueue.main.async {
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "engine startTracking ok auth=\(auth) venues=\(venueCount) userId=\(uidPrefix)… radius=\(Int(self.venueRadiusM))m heartbeatMs=\(self.heartbeatMs)"
+            )
+        }
     }
 
     func stopTracking(deactivate: Bool = true) {
@@ -178,7 +193,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     // MARK: - CLLocationManagerDelegate
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus != .authorizedAlways, isRunning {
+        let status = manager.authorizationStatus
+        DispatchQueue.main.async {
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "engine authChanged status=\(status.rawValue) isRunning=\(self.isRunning)"
+            )
+        }
+        if status != .authorizedAlways, isRunning {
             stopTracking(deactivate: true)
             DispatchQueue.main.async { [weak self] in
                 self?.eventDelegate?.engineDidLoseAuthorization(self!)
@@ -220,7 +242,17 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private func processLocation(_ location: CLLocation) {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
-        let venueName = nearestVenueName(latitude: lat, longitude: lon)
+        let nearest = nearestVenueDetail(latitude: lat, longitude: lon)
+        let venueName = nearest.flatMap { $0.distance < venueRadiusM ? $0.name : nil }
+
+        if let nearest {
+            let inside = nearest.distance < venueRadiusM
+            logLocationDiag(
+                "scan nearest=\(nearest.name) dist=\(Int(nearest.distance))m radius=\(Int(venueRadiusM))m inside=\(inside)"
+            )
+        } else {
+            logLocationDiag("scan nearest=(none) venuesConfigured=\(queue.sync { venues.count })")
+        }
 
         if venueName == nil {
             let shouldDeactivate: Bool = queue.sync {
@@ -231,6 +263,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                 return true
             }
             if shouldDeactivate, !skipSupabase, let api = supabase {
+                logLocationDiag("deactivating live_locations (left venue geofence)")
                 api.deactivateLiveLocation(userId: userId) { [weak self] result in
                     guard let self = self else { return }
                     switch result {
@@ -253,8 +286,19 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             return (venueChanged, heartbeatDue, name)
         }
 
-        guard writeDecision.venueChanged || writeDecision.heartbeatDue else { return }
-        guard !skipSupabase, let api = supabase else { return }
+        guard writeDecision.venueChanged || writeDecision.heartbeatDue else {
+            logLocationDiag(
+                "skipWrite venue=\(writeDecision.name) (unchanged, heartbeat not due)"
+            )
+            return
+        }
+        guard !skipSupabase, let api = supabase else {
+            logLocationDiag(
+                "skipWrite venue=\(writeDecision.name) skipSupabase=\(skipSupabase) apiNil=\(supabase == nil)",
+                level: "warn"
+            )
+            return
+        }
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -294,7 +338,8 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    private func nearestVenueName(latitude: Double, longitude: Double) -> String? {
+    /// Closest venue and distance (meters), regardless of radius.
+    private func nearestVenueDetail(latitude: Double, longitude: Double) -> (name: String, distance: Double)? {
         let venuesSnapshot = queue.sync { venues }
         var closest: (name: String, distance: Double)?
 
@@ -306,13 +351,24 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                 lat2: venue.coordinates[0],
                 lon2: venue.coordinates[1]
             )
-            if d < venueRadiusM {
-                if closest == nil || d < closest!.distance {
-                    closest = (venue.name, d)
-                }
+            if closest == nil || d < closest!.distance {
+                closest = (venue.name, d)
             }
         }
-        return closest?.name
+        return closest
+    }
+
+    private func nearestVenueName(latitude: Double, longitude: Double) -> String? {
+        guard let nearest = nearestVenueDetail(latitude: latitude, longitude: longitude) else {
+            return nil
+        }
+        return nearest.distance < venueRadiusM ? nearest.name : nil
+    }
+
+    private func logLocationDiag(_ message: String, level: String = "info") {
+        DispatchQueue.main.async {
+            DiagnosticLog.shared.append(category: "location", message: message, level: level)
+        }
     }
 
     private func notifyWriteError(_ error: Error) {

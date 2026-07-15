@@ -136,6 +136,37 @@ struct DealsView: View {
             .background(Color.black.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await appModel.refreshCatalog() }
+            .onAppear { logDealsDiagnostics(event: "appear") }
+            .onChange(of: appModel.listings.count) { _, _ in
+                logDealsDiagnostics(event: "listings-changed")
+            }
+            .onChange(of: dayFilter) { _, _ in logDealsDiagnostics(event: "day-filter") }
+            .onChange(of: areaFilter) { _, _ in logDealsDiagnostics(event: "area-filter") }
+            .onChange(of: showAllAreas) { _, _ in logDealsDiagnostics(event: "all-areas-toggle") }
+        }
+    }
+
+    private func logDealsDiagnostics(event: String) {
+        let areas = Dictionary(grouping: appModel.listings, by: \.area).mapValues(\.count)
+        let areaSummary = areas.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: """
+            Deals[\(event)] total=\(appModel.listings.count) visible=\(filteredListings.count) \
+            day=\(dayFilter.label) area=\(showAllAreas ? "All" : (areaFilter?.rawValue ?? "none"))
+            """
+        )
+        if !areaSummary.isEmpty {
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Deals listing areas: \(areaSummary)"
+            )
+        }
+        if appModel.listings.count <= 6 {
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Deals: Supabase returned only \(appModel.listings.count) listings — UI cannot show more until DB is re-seeded"
+            )
         }
     }
 

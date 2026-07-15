@@ -41,13 +41,15 @@ struct ChatPost: Codable, Identifiable, Hashable {
 
 struct CheckInRow: Codable, Hashable, Identifiable {
     let id: String
-    let user_id: String
-    let venue_name: String
+    let venue: String
+    let start_time: String
+    let end_time: String
+    let date: String?
     let created_at: String
 
     enum CodingKeys: String, CodingKey {
         case rawId = "id"
-        case user_id, venue_name, created_at
+        case venue, start_time, end_time, date, created_at
     }
 
     init(from decoder: Decoder) throws {
@@ -57,25 +59,61 @@ struct CheckInRow: Codable, Hashable, Identifiable {
         } else if let s = try? c.decode(String.self, forKey: .rawId) {
             id = s
         } else {
-            let uid = try c.decode(String.self, forKey: .user_id)
-            let venue = try c.decode(String.self, forKey: .venue_name)
+            let venue = try c.decode(String.self, forKey: .venue)
             let created = try c.decode(String.self, forKey: .created_at)
-            id = "\(uid)-\(created)-\(venue)"
-            user_id = uid
-            venue_name = venue
+            id = "\(venue)-\(created)"
+            self.venue = venue
+            start_time = (try? c.decode(String.self, forKey: .start_time)) ?? ""
+            end_time = (try? c.decode(String.self, forKey: .end_time)) ?? ""
+            date = try? c.decode(String.self, forKey: .date)
             created_at = created
             return
         }
-        user_id = try c.decode(String.self, forKey: .user_id)
-        venue_name = try c.decode(String.self, forKey: .venue_name)
+        venue = try c.decode(String.self, forKey: .venue)
+        start_time = (try? c.decode(String.self, forKey: .start_time)) ?? ""
+        end_time = (try? c.decode(String.self, forKey: .end_time)) ?? ""
+        date = try? c.decode(String.self, forKey: .date)
         created_at = try c.decode(String.self, forKey: .created_at)
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .rawId)
-        try c.encode(user_id, forKey: .user_id)
-        try c.encode(venue_name, forKey: .venue_name)
+        try c.encode(venue, forKey: .venue)
+        try c.encode(start_time, forKey: .start_time)
+        try c.encode(end_time, forKey: .end_time)
+        try c.encodeIfPresent(date, forKey: .date)
         try c.encode(created_at, forKey: .created_at)
+    }
+
+    /// Short display line for Activities (matches web check-in fields).
+    var displaySubtitle: String {
+        let day = date?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = Self.shortClock(start_time)
+        let end = Self.shortClock(end_time)
+        var parts: [String] = []
+        if let day, !day.isEmpty { parts.append(day) }
+        if !start.isEmpty || !end.isEmpty {
+            parts.append([start, end].filter { !$0.isEmpty }.joined(separator: "–"))
+        }
+        if parts.isEmpty { return created_at }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func shortClock(_ isoOrTime: String) -> String {
+        let s = isoOrTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return "" }
+        // Prefer HH:mm from ISO timestamps; fall back to raw string.
+        if let d = ISO8601DateFormatter().date(from: s)
+            ?? ISO8601DateFormatter().date(from: s.replacingOccurrences(of: "\\.\\d+", with: "", options: .regularExpression))
+        {
+            let f = DateFormatter()
+            f.dateFormat = "h:mma"
+            return f.string(from: d).lowercased()
+        }
+        if s.count >= 5, s.contains(":") {
+            return String(s.prefix(5))
+        }
+        return s
     }
 }

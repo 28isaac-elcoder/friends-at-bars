@@ -60,25 +60,76 @@ enum LiveLocationService {
             let venue_name: String
             let is_active: Bool?
             let last_updated: String?
+            let user_id: String?
         }
-        let rows: [Row] = try await SupabaseClient.shared.get(
-            path: "rest/v1/live_locations",
-            query: [
-                URLQueryItem(name: "is_active", value: "eq.true"),
-                URLQueryItem(name: "select", value: "venue_name,is_active,last_updated"),
-            ]
-        )
+        let rows: [Row]
+        do {
+            rows = try await SupabaseClient.shared.get(
+                path: "rest/v1/live_locations",
+                query: [
+                    URLQueryItem(name: "is_active", value: "eq.true"),
+                    URLQueryItem(name: "select", value: "venue_name,is_active,last_updated,user_id"),
+                ]
+            )
+        } catch {
+            await MainActor.run {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "venueCounts fetch failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
+            throw error
+        }
+
         let cutoff = Date().addingTimeInterval(TimeInterval(-maxAgeSeconds))
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var counts: [String: Int] = [:]
+        var stale = 0
+        var missingStamp = 0
         for row in rows {
             if let s = row.last_updated {
                 let date = formatter.date(from: s)
                     ?? ISO8601DateFormatter().date(from: s)
-                if let date, date < cutoff { continue }
+                if let date, date < cutoff {
+                    stale += 1
+                    continue
+                }
+            } else {
+                missingStamp += 1
             }
             counts[row.venue_name, default: 0] += 1
+        }
+        let totalPeople = counts.values.reduce(0, +)
+        let top = counts.sorted { $0.value > $1.value }.prefix(5)
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ", ")
+        await MainActor.run {
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: """
+                venueCounts rawActive=\(rows.count) counted=\(totalPeople) \
+                venuesWithPeople=\(counts.count) staleDropped=\(stale) \
+                missingLastUpdated=\(missingStamp) maxAgeSec=\(maxAgeSeconds)
+                """
+            )
+            if !top.isEmpty {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "venueCounts top: \(top)"
+                )
+            } else if rows.isEmpty {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "venueCounts: no active live_locations rows (nobody checked in / tracking off)"
+                )
+            } else {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "venueCounts: \(rows.count) active rows but all stale or uncountable — check last_updated heartbeats"
+                )
+            }
         }
         return counts
     }
@@ -86,13 +137,35 @@ enum LiveLocationService {
 
 enum CheckInService {
     static func recent(limit: Int = 40) async throws -> [CheckInRow] {
-        try await SupabaseClient.shared.get(
-            path: "rest/v1/checkins",
-            query: [
-                URLQueryItem(name: "order", value: "created_at.desc"),
-                URLQueryItem(name: "limit", value: "\(limit)"),
-                URLQueryItem(name: "select", value: "id,user_id,venue_name,created_at"),
-            ]
-        )
+        do {
+            let rows: [CheckInRow] = try await SupabaseClient.shared.get(
+                path: "rest/v1/checkins",
+                query: [
+                    URLQueryItem(name: "order", value: "created_at.desc"),
+                    URLQueryItem(name: "limit", value: "\(limit)"),
+                    URLQueryItem(
+                        name: "select",
+                        value: "id,venue,start_time,end_time,date,created_at"
+                    ),
+                ]
+            )
+            await MainActor.run {
+                let sample = rows.prefix(3).map(\.venue).joined(separator: ", ")
+                DiagnosticLog.shared.append(
+                    category: "system",
+                    message: "checkins fetch ok count=\(rows.count) sample=\(sample.isEmpty ? "(none)" : sample)"
+                )
+            }
+            return rows
+        } catch {
+            await MainActor.run {
+                DiagnosticLog.shared.append(
+                    category: "error",
+                    message: "checkins fetch failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
+            throw error
+        }
     }
 }

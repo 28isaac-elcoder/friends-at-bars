@@ -33,10 +33,33 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
         switch status {
         case .notDetermined:
             manager.requestAlwaysAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            try? VenueLiveLocationEngine.shared.startTracking()
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "softStart: requesting Always (notDetermined)"
+            )
+        case .authorizedAlways:
+            do {
+                try VenueLiveLocationEngine.shared.startTracking()
+            } catch {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "softStart startTracking failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
+        case .authorizedWhenInUse:
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "softStart: WhenInUse only — engine needs Always; requesting upgrade",
+                level: "warn"
+            )
+            manager.requestAlwaysAuthorization()
         default:
-            break
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "softStart: cannot track status=\(status.rawValue)",
+                level: "warn"
+            )
         }
     }
 
@@ -55,12 +78,22 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
             }
         case .authorizedWhenInUse:
             manager.requestAlwaysAuthorization()
-            if thenStartTracking {
-                try? VenueLiveLocationEngine.shared.startTracking()
-            }
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "Allow Location: WhenInUse — requesting Always upgrade",
+                level: "warn"
+            )
         case .authorizedAlways:
             if thenStartTracking {
-                try? VenueLiveLocationEngine.shared.startTracking()
+                do {
+                    try VenueLiveLocationEngine.shared.startTracking()
+                } catch {
+                    DiagnosticLog.shared.append(
+                        category: "location",
+                        message: "Allow Location startTracking failed: \(error.localizedDescription)",
+                        level: "error"
+                    )
+                }
             }
         @unknown default:
             manager.requestAlwaysAuthorization()
@@ -78,8 +111,22 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
                 category: "location",
                 message: "Authorization changed status=\(manager.authorizationStatus.rawValue)"
             )
-            if self.isAuthorized {
-                try? VenueLiveLocationEngine.shared.startTracking()
+            if manager.authorizationStatus == .authorizedAlways {
+                do {
+                    try VenueLiveLocationEngine.shared.startTracking()
+                } catch {
+                    DiagnosticLog.shared.append(
+                        category: "location",
+                        message: "authChanged startTracking failed: \(error.localizedDescription)",
+                        level: "error"
+                    )
+                }
+            } else if manager.authorizationStatus == .authorizedWhenInUse {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "authChanged WhenInUse — live_locations upserts need Always",
+                    level: "warn"
+                )
             }
         }
     }
