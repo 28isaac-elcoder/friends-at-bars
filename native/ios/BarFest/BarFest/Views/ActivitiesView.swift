@@ -31,9 +31,12 @@ struct ActivitiesView: View {
         return list
     }
 
-    /// Show live bar headcounts when OS location is allowed (mock mode still uses mock counts).
+    /// Live: OS location. Test Mode + mock: simulate-location toggle (Chat parity).
     private var showBarAttendance: Bool {
-        locationAuth.isAuthorized
+        if testMode.uiEnabled && testMode.useMockCheckIns {
+            return testMode.simulateLocationAllowed
+        }
+        return locationAuth.isAuthorized
     }
 
     var body: some View {
@@ -41,9 +44,29 @@ struct ActivitiesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if testMode.useMockCheckIns {
-                        Text("Test Mode: showing mock headcounts")
-                            .font(.caption)
-                            .foregroundStyle(.cyan)
+                        HStack(spacing: 10) {
+                            Text("Test Mode: showing mock headcounts")
+                                .font(.caption)
+                                .foregroundStyle(.cyan)
+                            Spacer(minLength: 8)
+                            Button {
+                                testMode.simulateLocationAllowed.toggle()
+                                DiagnosticLog.shared.append(
+                                    category: "system",
+                                    message: "Activities simulate location allowed=\(testMode.simulateLocationAllowed)"
+                                )
+                            } label: {
+                                Image(systemName: testMode.simulateLocationAllowed
+                                      ? "location.fill"
+                                      : "location.slash")
+                                    .font(.body.weight(.semibold))
+                            }
+                            .accessibilityLabel(
+                                testMode.simulateLocationAllowed
+                                    ? "Simulate location on"
+                                    : "Simulate location off"
+                            )
+                        }
                     }
 
                     PriorityDealsCarousel(items: priorityDeals)

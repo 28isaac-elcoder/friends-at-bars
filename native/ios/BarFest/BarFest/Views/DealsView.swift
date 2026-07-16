@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DealsView: View {
     @EnvironmentObject private var appModel: AppModel
-    @State private var dayFilter: DayFilter = .all
+    @State private var dayFilter: DayFilter = .today
     @State private var areaFilter: CampusArea? = nil
     /// When true, show all areas (alongside day filter). Distinct from nil area clearing.
     @State private var showAllAreas = true

@@ -40,4 +40,10 @@ enum DayFilter: Int, CaseIterable, Identifiable {
         case .saturday: return "Saturday"
         }
     }
+
+    /// Calendar weekday mapped to DayFilter (Sunday = 0 … Saturday = 6).
+    static var today: DayFilter {
+        let weekday = Calendar.current.component(.weekday, from: Date()) // 1=Sun … 7=Sat
+        return DayFilter(rawValue: weekday - 1) ?? .all
+    }
 }

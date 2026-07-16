@@ -220,23 +220,6 @@ struct ChatView: View {
                         )
                     }
                 }
-
-                if !(selectMode && useLocal) {
-                    if isOwn {
-                        Button("Delete", role: .destructive) {
-                            Task { await hideOwn(postId: post.id) }
-                        }
-                        .font(.caption)
-                    } else if !useLocal {
-                        Button("Report") {
-                            Task {
-                                try? await ChatService.report(postId: post.id, reason: nil)
-                                await load()
-                            }
-                        }
-                        .font(.caption)
-                    }
-                }
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -244,6 +227,24 @@ struct ChatView: View {
             }
         }
         .padding(.vertical, 6)
+        .swipeActions(edge: .trailing, allowsFullSwipe: !(selectMode && useLocal)) {
+            if !(selectMode && useLocal) {
+                if isOwn {
+                    Button(role: .destructive) {
+                        Task { await hideOwn(postId: post.id) }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } else {
+                    Button {
+                        Task { await reportPost(postId: post.id) }
+                    } label: {
+                        Label("Report", systemImage: "flag")
+                    }
+                    .tint(.orange)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -409,6 +410,30 @@ struct ChatView: View {
         } else {
             try? await ChatService.hideOwn(postId: postId)
             await load()
+        }
+    }
+
+    private func reportPost(postId: UUID) async {
+        if useLocal {
+            // Local feed has no server report — soft-hide + log for Test Mode parity.
+            localChat.hide(postIds: [postId])
+            DiagnosticLog.shared.append(
+                category: "chat",
+                message: "Reported (local) post \(postId.uuidString.prefix(8))…"
+            )
+        } else {
+            do {
+                try await ChatService.report(postId: postId, reason: nil)
+                DiagnosticLog.shared.append(category: "chat", message: "Reported post")
+                await load()
+            } catch {
+                self.error = error.localizedDescription
+                DiagnosticLog.shared.append(
+                    category: "chat",
+                    message: "Report failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
         }
     }
 

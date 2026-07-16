@@ -4,7 +4,12 @@ import SwiftUI
 struct PriorityDealsCarousel: View {
     let items: [CatalogListing]
     @State private var index = 0
+    @State private var detailItem: CatalogListing?
     private let rotateSeconds: TimeInterval = 3
+
+    private static let fullDayNames = [
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ]
 
     var body: some View {
         Group {
@@ -13,6 +18,11 @@ struct PriorityDealsCarousel: View {
             } else {
                 carouselBody
             }
+        }
+        .sheet(item: $detailItem) { item in
+            PriorityDealDetailSheet(item: item)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -58,18 +68,10 @@ struct PriorityDealsCarousel: View {
             Text(current.venue_name)
                 .font(current.title.isEmpty ? .title3.bold() : .subheadline.weight(.semibold))
                 .foregroundStyle(.white)
-            if !current.time_label.isEmpty {
-                Text(current.time_label)
+            if let when = dayTimeLabel(current), !when.isEmpty {
+                Text(when)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.7))
-            }
-            ForEach(detailBullets(current), id: \.self) { line in
-                HStack(alignment: .top, spacing: 6) {
-                    Text("•")
-                    Text(line)
-                }
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.9))
             }
         }
         .padding(14)
@@ -82,6 +84,10 @@ struct PriorityDealsCarousel: View {
                         .strokeBorder(Color(red: 0.45, green: 0.38, blue: 0.22).opacity(0.6), lineWidth: 1)
                 )
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            detailItem = current
+        }
         .onAppear { index = 0 }
         .onChange(of: items.map(\.id)) { _, _ in index = 0 }
         .task(id: items.count) {
@@ -89,14 +95,12 @@ struct PriorityDealsCarousel: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(rotateSeconds * 1_000_000_000))
                 guard !Task.isCancelled, items.count > 1 else { break }
+                // Don't auto-advance while a detail sheet is open.
+                guard detailItem == nil else { continue }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     index = (index + 1) % items.count
                 }
             }
-        }
-        .onTapGesture {
-            guard items.count > 1 else { return }
-            withAnimation { index = (index + 1) % items.count }
         }
     }
 
@@ -114,18 +118,99 @@ struct PriorityDealsCarousel: View {
         return Color(red: 0.9, green: 0.75, blue: 0.35)
     }
 
-    private func detailBullets(_ item: CatalogListing) -> [String] {
-        let raw: String
-        if item.title.isEmpty {
-            raw = item.details
-        } else if item.details.isEmpty {
-            return []
+    /// e.g. "Thursday  7pm-Close" or "Thu, Fri  8pm-Close"
+    private func dayTimeLabel(_ item: CatalogListing) -> String? {
+        let days = item.days_of_week.sorted()
+        let dayPart: String
+        if days.isEmpty {
+            dayPart = ""
+        } else if days.count == 1, let d = days.first, (0 ..< Self.fullDayNames.count).contains(d) {
+            dayPart = Self.fullDayNames[d]
         } else {
-            raw = item.details
+            let short = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            dayPart = days.compactMap { d in
+                (0 ..< short.count).contains(d) ? short[d] : nil
+            }.joined(separator: ", ")
         }
-        return raw
-            .split(separator: ";")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let time = item.time_label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if dayPart.isEmpty && time.isEmpty { return nil }
+        if dayPart.isEmpty { return time }
+        if time.isEmpty { return dayPart }
+        return "\(dayPart)  \(time)"
+    }
+}
+
+private struct PriorityDealDetailSheet: View {
+    let item: CatalogListing
+    @Environment(\.dismiss) private var dismiss
+
+    private static let fullDayNames = [
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 6) {
+                        ForEach(item.type_labels, id: \.self) { label in
+                            Text(label)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if !item.title.isEmpty {
+                        Text(item.title)
+                            .font(.title2.bold())
+                    }
+                    Text(item.venue_name)
+                        .font(.title3.weight(.semibold))
+                    if !item.area.isEmpty {
+                        Text(item.area)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !item.time_label.isEmpty || !item.days_of_week.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !item.days_of_week.isEmpty {
+                                Text(dayNames(item.days_of_week))
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            if !item.time_label.isEmpty {
+                                Text(item.time_label)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    if !item.details.isEmpty {
+                        Divider()
+                        Text(item.details)
+                            .font(.body)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle(item.type_labels.contains(where: { $0.localizedCaseInsensitiveContains("event") }) ? "Bar Event" : "Bar Deal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func dayNames(_ days: [Int]) -> String {
+        days.sorted().compactMap { d in
+            (0 ..< Self.fullDayNames.count).contains(d) ? Self.fullDayNames[d] : nil
+        }.joined(separator: ", ")
     }
 }
