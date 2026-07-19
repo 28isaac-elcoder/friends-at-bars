@@ -58,7 +58,7 @@ See root `codemagic.yaml`. Manual start: pick branch + matching workflow.
 | Deals | `catalog_listings` |
 | Chat | `chat_posts` + RPCs + native composer (16pt+) |
 | Map | `MKMapView` / SwiftUI `Map` + `catalog_venues` |
-| Games | Ride the Bus / Switch Search (words from `catalog_game_content`) |
+| Games | Ride the Bus / Switch Search (words from CMS `catalog_game_content`, bundled fallback) |
 
 ## Content updates without App Store
 

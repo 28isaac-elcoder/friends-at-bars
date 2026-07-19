@@ -8,6 +8,7 @@ struct ActivitiesView: View {
     @State private var error: String?
     @State private var populationSort: PopulationSort = .mostPopulated
     @State private var areaFilter: CampusArea?
+    @State private var selectedVenue: CatalogVenue?
 
     private var priorityDeals: [CatalogListing] {
         appModel.listings
@@ -145,21 +146,31 @@ struct ActivitiesView: View {
                     if showBarAttendance {
                         LazyVStack(spacing: 0) {
                             ForEach(filteredVenues) { venue in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(venue.name)
-                                            .font(.body.weight(.medium))
-                                        Text(venue.area)
-                                            .font(.caption2)
+                                Button {
+                                    selectedVenue = venue
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(venue.name)
+                                                .font(.body.weight(.medium))
+                                                .foregroundStyle(.primary)
+                                            Text(venue.area)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Text("\(appModel.venueCounts[venue.name, default: 0])")
+                                            .font(.body.monospacedDigit().weight(.semibold))
                                             .foregroundStyle(.secondary)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
                                     }
-                                    Spacer()
-                                    Text("\(appModel.venueCounts[venue.name, default: 0])")
-                                        .font(.body.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(.secondary)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 14)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 14)
+                                .buttonStyle(.plain)
                                 Divider().opacity(0.35)
                             }
                         }
@@ -200,7 +211,28 @@ struct ActivitiesView: View {
                 Task { await appModel.refreshCatalog(); await reload() }
             }
             .onAppear { locationAuth.refresh() }
+            .sheet(item: $selectedVenue) { venue in
+                VenueBarSheet(
+                    venue: venue,
+                    listings: todaysListings(for: venue)
+                )
+                .presentationDetents([.medium, .large])
+            }
         }
+    }
+
+    /// Deals/events for this venue that apply today (empty `days_of_week` = any day).
+    private func todaysListings(for venue: CatalogVenue) -> [CatalogListing] {
+        let day = DayFilter.today.rawValue
+        return appModel.listings
+            .filter { listing in
+                listing.venue_name.caseInsensitiveCompare(venue.name) == .orderedSame
+                    && (listing.days_of_week.isEmpty || listing.days_of_week.contains(day))
+            }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.title < rhs.title
+            }
     }
 
     private func shortAreaLabel(_ area: CampusArea) -> String {

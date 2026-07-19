@@ -9,11 +9,18 @@ type Row = {
   is_active: boolean;
 };
 
+const DEFAULT_PAYLOAD = `{
+  "fourLetter": [],
+  "fiveLetter": [],
+  "sixLetter": [],
+  "sevenLetter": []
+}`;
+
 export function GameContentPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [gameKey, setGameKey] = useState("switch-search");
   const [packKey, setPackKey] = useState("default");
-  const [jsonText, setJsonText] = useState('{\n  "words": []\n}');
+  const [jsonText, setJsonText] = useState(DEFAULT_PAYLOAD);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +88,14 @@ export function GameContentPanel() {
   return (
     <div>
       <h2>{editingId ? "Edit pack" : "Upsert game pack"}</h2>
+      <p style={{ color: "#666", maxWidth: 640, lineHeight: 1.45 }}>
+        Switch Search expects bucketed JSON:{" "}
+        <code>fourLetter</code>, <code>fiveLetter</code>, <code>sixLetter</code>,{" "}
+        <code>sevenLetter</code> (same shape as{" "}
+        <code>src/data/wordLibrary.json</code>). Sync from the web library with{" "}
+        <code>node scripts/sync-switch-search-words.cjs</code>, then run{" "}
+        <code>supabase/switch_search_word_pack.sql</code> in Supabase.
+      </p>
       <form className="grid" onSubmit={save}>
         <label>
           Game key
@@ -111,7 +126,13 @@ export function GameContentPanel() {
           <div className="row-actions">
             <button type="submit">{editingId ? "Update" : "Save"}</button>
             {editingId && (
-              <button type="button" onClick={() => setEditingId(null)}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setJsonText(DEFAULT_PAYLOAD);
+                }}
+              >
                 Cancel
               </button>
             )}

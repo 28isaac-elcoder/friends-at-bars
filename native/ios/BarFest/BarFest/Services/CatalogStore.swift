@@ -7,6 +7,8 @@ actor CatalogStore {
     private(set) var listings: [CatalogListing] = []
     private(set) var contentVersion: Int?
     private(set) var wordPack: [String] = []
+    /// Bucketed Switch Search pack from `catalog_game_content` (nil if CMS missing/empty).
+    private(set) var switchSearchLibrary: WordLibrary?
 
     private let cacheURL: URL = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -68,35 +70,11 @@ actor CatalogStore {
     }
 
     private func loadWordPack() async {
-        struct RawPack: Decodable {
-            let payload: FlexibleWords
-        }
-        enum FlexibleWords: Decodable {
-            case list([String])
-            case buckets([String: [String]])
-
-            init(from decoder: Decoder) throws {
-                let c = try decoder.singleValueContainer()
-                if let list = try? c.decode([String].self) {
-                    self = .list(list)
-                    return
-                }
-                if let obj = try? c.decode([String: [String]].self) {
-                    self = .buckets(obj)
-                    return
-                }
-                self = .list([])
-            }
-
-            var words: [String] {
-                switch self {
-                case .list(let w): return w
-                case .buckets(let o): return o.values.flatMap { $0 }
-                }
-            }
+        struct PackRow: Decodable {
+            let payload: WordLibrary
         }
 
-        if let rows: [RawPack] = try? await SupabaseClient.shared.get(
+        if let rows: [PackRow] = try? await SupabaseClient.shared.get(
             path: "rest/v1/catalog_game_content",
             query: [
                 URLQueryItem(name: "game_key", value: "eq.switch-search"),
@@ -104,8 +82,12 @@ actor CatalogStore {
                 URLQueryItem(name: "is_active", value: "eq.true"),
                 URLQueryItem(name: "select", value: "payload"),
             ]
-        ) {
-            wordPack = rows.first?.payload.words ?? []
+        ), let lib = rows.first?.payload, !lib.isEmpty {
+            switchSearchLibrary = lib
+            wordPack = lib.allWords
+        } else {
+            switchSearchLibrary = nil
+            wordPack = []
         }
     }
 }

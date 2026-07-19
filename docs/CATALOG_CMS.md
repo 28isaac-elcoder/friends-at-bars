@@ -17,6 +17,14 @@ node scripts/generate-catalog-seed.mjs
 
 Then re-run `catalog_seed.sql` in the Supabase SQL editor (or use Admin CMS → Deals / Events → **Import web listings**).
 
+**Switch Search words** live in `catalog_game_content` (`switch-search` / `default`) as bucketed JSON (`fourLetter` / `fiveLetter` / `sixLetter` / `sevenLetter`). Sync from the web library and upsert SQL:
+
+```bash
+node scripts/sync-switch-search-words.cjs
+```
+
+Then run [`supabase/switch_search_word_pack.sql`](../supabase/switch_search_word_pack.sql) in the Supabase SQL editor (or paste/edit the same payload in Admin CMS → Games). Native Switch Search loads this CMS pack on catalog refresh, with bundled `wordLibrary.json` as offline fallback.
+
 **Native Deals tab** only shows rows in `catalog_listings`. If you only see ~5 deals, the DB still has the old sample seed — re-import the full set.
 ### 2. Admin auth
 
