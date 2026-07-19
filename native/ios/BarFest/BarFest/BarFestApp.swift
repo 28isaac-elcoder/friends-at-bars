@@ -57,8 +57,9 @@ final class AppModel: ObservableObject {
             try await CatalogStore.shared.refresh(includeTest: includeTest)
             venues = await CatalogStore.shared.venues
             listings = await CatalogStore.shared.listings
-            wordPackReady = await CatalogStore.shared.switchSearchLibrary != nil
-                || !(await CatalogStore.shared.wordPack.isEmpty)
+            let cmsLibrary = await CatalogStore.shared.switchSearchLibrary
+            let wordPack = await CatalogStore.shared.wordPack
+            wordPackReady = cmsLibrary != nil || !wordPack.isEmpty
             if TestModeStore.shared.useMockCheckIns {
                 venueCounts = mockVenueCounts(from: venues)
             } else {

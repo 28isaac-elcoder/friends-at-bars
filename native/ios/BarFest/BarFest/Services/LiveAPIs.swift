@@ -102,6 +102,9 @@ enum LiveLocationService {
             counts[row.venue_name, default: 0] += 1
         }
         let totalPeople = counts.values.reduce(0, +)
+        let venueCount = counts.count
+        let staleDropped = stale
+        let missingLastUpdated = missingStamp
         let top = counts.sorted { $0.value > $1.value }.prefix(5)
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: ", ")
@@ -110,8 +113,8 @@ enum LiveLocationService {
                 category: "location",
                 message: """
                 venueCounts rawActive=\(rows.count) counted=\(totalPeople) \
-                venuesWithPeople=\(counts.count) staleDropped=\(stale) \
-                missingLastUpdated=\(missingStamp) maxAgeSec=\(maxAgeSeconds)
+                venuesWithPeople=\(venueCount) staleDropped=\(staleDropped) \
+                missingLastUpdated=\(missingLastUpdated) maxAgeSec=\(maxAgeSeconds)
                 """
             )
             if !top.isEmpty {
