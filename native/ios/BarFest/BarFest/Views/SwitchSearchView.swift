@@ -175,33 +175,19 @@ struct SwitchSearchView: View {
         return GeometryReader { geo in
             let gap: CGFloat = 3
             let side = min(geo.size.width, geo.size.height)
-            let cell = (side - gap * CGFloat(size - 1)) / CGFloat(size)
-            let gridSide = cell * CGFloat(size) + gap * CGFloat(size - 1)
+            let cellSize = (side - gap * CGFloat(size - 1)) / CGFloat(size)
+            let gridSide = cellSize * CGFloat(size) + gap * CGFloat(size - 1)
 
             ZStack {
                 VStack(spacing: gap) {
                     ForEach(engine.grid.indices, id: \.self) { r in
                         HStack(spacing: gap) {
                             ForEach(engine.grid[r]) { cellModel in
-                                let selected = engine.isSelected(row: cellModel.row, col: cellModel.col)
-                                let inverted = selected || cellModel.found
-                                Text(cellModel.letter)
-                                    .font(.system(size: max(12, cell * 0.42), weight: .bold, design: .rounded))
-                                    .foregroundStyle(inverted ? Color.black : Color.white)
-                                    .frame(width: cell, height: cell)
-                                    .background(
-                                        cellModel.unfoundFlash
-                                            ? Color.gray
-                                            : (inverted ? Color.white : Color.white.opacity(0.08))
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .strokeBorder(
-                                                inverted ? Color.white : Color.white.opacity(0.25),
-                                                lineWidth: 1
-                                            )
-                                    )
+                                SwitchSearchLetterCell(
+                                    cell: cellModel,
+                                    selected: engine.isSelected(row: cellModel.row, col: cellModel.col),
+                                    size: cellSize
+                                )
                             }
                         }
                     }
@@ -210,7 +196,7 @@ struct SwitchSearchView: View {
 
                 SwitchSearchTouchPad(
                     gridSize: size,
-                    cell: cell,
+                    cell: cellSize,
                     gap: gap,
                     onMove: { r, c in engine.pointerMoved(toRow: r, col: c) },
                     onEnd: { r, c in engine.pointerEnded(atRow: r, col: c) }
@@ -284,6 +270,38 @@ struct SwitchSearchView: View {
                 .foregroundStyle(.white)
             Spacer()
         }
+    }
+}
+
+/// Extracted so Swift can type-check the grid without timing out.
+private struct SwitchSearchLetterCell: View {
+    let cell: SwitchSearchCell
+    let selected: Bool
+    let size: CGFloat
+
+    private var inverted: Bool { selected || cell.found }
+
+    private var fill: Color {
+        if cell.unfoundFlash { return .gray }
+        if inverted { return .white }
+        return Color.white.opacity(0.08)
+    }
+
+    private var border: Color {
+        inverted ? .white : Color.white.opacity(0.25)
+    }
+
+    var body: some View {
+        Text(cell.letter)
+            .font(.system(size: max(12, size * 0.42), weight: .bold, design: .rounded))
+            .foregroundStyle(inverted ? Color.black : Color.white)
+            .frame(width: size, height: size)
+            .background(fill)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(border, lineWidth: 1)
+            )
     }
 }
 
