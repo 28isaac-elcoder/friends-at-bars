@@ -17,7 +17,6 @@ struct SwitchSearchCell: Identifiable, Hashable {
     let row: Int
     let col: Int
     var letter: String
-    var highlighted: Bool = false
     var found: Bool = false
     var unfoundFlash: Bool = false
 }
@@ -26,33 +25,46 @@ struct SwitchSearchCell: Identifiable, Hashable {
 final class SwitchSearchEngine: ObservableObject {
     enum Screen { case home, playing, ended }
 
+    /// Mirrors web: drag through letters, or tap first then tap last.
+    enum SelectionMode: Equatable {
+        case idle
+        /// Finger is down; may become drag if the cell changes.
+        case pressing
+        case dragging
+        /// Waiting for a second tap (point-to-point).
+        case awaitingEnd
+    }
+
     @Published var screen: Screen = .home
     @Published var difficulty: SwitchSearchDifficulty = .easy
     @Published var grid: [[SwitchSearchCell]] = []
     @Published var currentWords: [String] = []
     @Published var foundWords: Set<String> = []
     @Published var totalFound = 0
-    @Published var sessionLeft = 42
-    @Published var puzzleLeft = 12
+    /// Fractional seconds remaining — updated on a high-frequency tick for smooth bars.
+    @Published var sessionLeft: Double = 42
+    @Published var puzzleLeft: Double = 12
     @Published var hints: [String] = []
     @Published var isFrozen = false
+    /// Lightweight selection path — updated during drag without rewriting cell structs.
     @Published var selectedPath: [(Int, Int)] = []
-    /// True once CMS or bundled library has been resolved for this session.
+    @Published var selectionMode: SelectionMode = .idle
     @Published var librarySource: String = "bundled"
 
     private var library = WordLibrary.loadBundled()
     private var usedWords: [String] = []
     private var wordCells: [String: [(Int, Int)]] = [:]
-    private var sessionTimer: Timer?
-    private var puzzleTimer: Timer?
+    private var tickTimer: Timer?
     private var selectionStart: (Int, Int)?
-    private var gameElapsed = 0
+    private var lastHover: (Int, Int)?
+    private var gameElapsed: Double = 0
+    private let tickInterval: TimeInterval = 1.0 / 30.0
+    private var puzzleExpiredPending = false
 
     func appear() {
         Task { await refreshLibraryFromCatalog() }
     }
 
-    /// Prefer admin CMS `catalog_game_content`; fall back to bundled `wordLibrary.json`.
     func refreshLibraryFromCatalog() async {
         let cms = await CatalogStore.shared.switchSearchLibrary
         if let cms, !cms.isEmpty {
@@ -85,11 +97,11 @@ final class SwitchSearchEngine: ObservableObject {
         totalFound = 0
         foundWords = []
         gameElapsed = 0
-        sessionLeft = difficulty.sessionSeconds
-        puzzleLeft = difficulty.puzzleSeconds
+        sessionLeft = Double(difficulty.sessionSeconds)
+        puzzleLeft = Double(difficulty.puzzleSeconds)
+        puzzleExpiredPending = false
         isFrozen = false
-        selectedPath = []
-        selectionStart = nil
+        resetSelection(clearHighlightsOnly: false)
         screen = .playing
         generatePuzzle()
         startTimers()
@@ -108,80 +120,144 @@ final class SwitchSearchEngine: ObservableObject {
         stopTimers()
         screen = .home
         grid = []
-        selectedPath = []
-        selectionStart = nil
+        resetSelection(clearHighlightsOnly: false)
     }
 
-    // MARK: - Selection
+    // MARK: - Selection (web parity: drag + tap-first / tap-last)
 
-    func beginSelect(row: Int, col: Int) {
+    /// Touch / drag entered a cell.
+    func pointerMoved(toRow row: Int, col: Int) {
         guard screen == .playing else { return }
-        selectionStart = (row, col)
-        selectedPath = [(row, col)]
-        applyHighlight(path: selectedPath)
-    }
 
-    func updateSelect(row: Int, col: Int) {
-        guard screen == .playing else { return }
-        if selectionStart == nil {
-            beginSelect(row: row, col: col)
+        // Second tap in point-to-point mode.
+        if selectionMode == .awaitingEnd, let start = selectionStart {
+            if start.0 == row, start.1 == col { return }
+            let p = path(from: start, to: (row, col))
+            selectedPath = p
+            checkSelection(p)
             return
         }
+
+        if selectionStart == nil {
+            selectionStart = (row, col)
+            lastHover = (row, col)
+            selectedPath = [(row, col)]
+            selectionMode = .pressing
+            return
+        }
+
         guard let start = selectionStart else { return }
+        if lastHover?.0 == row, lastHover?.1 == col { return }
+        lastHover = (row, col)
+
+        if start.0 != row || start.1 != col {
+            selectionMode = .dragging
+        }
         selectedPath = path(from: start, to: (row, col))
-        applyHighlight(path: selectedPath)
     }
 
-    func endSelect(row: Int, col: Int) {
+    /// Finger lifted.
+    func pointerEnded(atRow row: Int?, col: Int?) {
         guard screen == .playing else { return }
-        let start = selectionStart ?? (row, col)
-        let path = path(from: start, to: (row, col))
-        selectedPath = path
-        checkSelection(path)
+
+        // Already finished via point-to-point second tap, or idle.
+        if selectionMode == .idle { return }
+
+        // Waiting for second tap — keep start highlighted.
+        if selectionMode == .awaitingEnd { return }
+
+        let end: (Int, Int)
+        if let row, let col {
+            end = (row, col)
+        } else if let last = selectedPath.last {
+            end = last
+        } else if let start = selectionStart {
+            end = start
+        } else {
+            resetSelection(clearHighlightsOnly: true)
+            return
+        }
+
+        guard let start = selectionStart else {
+            resetSelection(clearHighlightsOnly: true)
+            return
+        }
+
+        if selectionMode == .dragging {
+            let p = path(from: start, to: end)
+            selectedPath = p
+            checkSelection(p)
+            return
+        }
+
+        // Tap with no drag → wait for second letter (point-to-point).
+        if start.0 == end.0, start.1 == end.1 {
+            selectionMode = .awaitingEnd
+            selectedPath = [start]
+            lastHover = nil
+            return
+        }
+
+        // Released on a different cell → finalize as a selection.
+        let p = path(from: start, to: end)
+        selectedPath = p
+        checkSelection(p)
+    }
+
+    func isSelected(row: Int, col: Int) -> Bool {
+        selectedPath.contains { $0.0 == row && $0.1 == col }
+    }
+
+    private func resetSelection(clearHighlightsOnly: Bool) {
         selectionStart = nil
+        lastHover = nil
+        selectedPath = []
+        selectionMode = .idle
+        if !clearHighlightsOnly {
+            // nothing else
+        }
     }
 
     // MARK: - Timers
 
     private func startTimers() {
         stopTimers()
-        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickSession() }
+        let dt = tickInterval
+        let timer = Timer(timeInterval: dt, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick(delta: dt) }
         }
-        puzzleTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickPuzzle() }
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
     }
 
     private func stopTimers() {
-        sessionTimer?.invalidate()
-        puzzleTimer?.invalidate()
-        sessionTimer = nil
-        puzzleTimer = nil
+        tickTimer?.invalidate()
+        tickTimer = nil
     }
 
-    private func tickSession() {
+    private func tick(delta: TimeInterval) {
         guard screen == .playing else { return }
+
         if !isFrozen {
-            sessionLeft -= 1
-            gameElapsed += 1
+            sessionLeft = max(0, sessionLeft - delta)
+            gameElapsed += delta
             if sessionLeft <= 0 {
                 sessionLeft = 0
                 stopTimers()
                 screen = .ended
+                return
             }
         }
-    }
 
-    private func tickPuzzle() {
-        guard screen == .playing else { return }
-        guard puzzleLeft > 0 else { return }
-        puzzleLeft -= 1
+        guard !puzzleExpiredPending else { return }
+        puzzleLeft = max(0, puzzleLeft - delta)
         if puzzleLeft <= 0 {
             puzzleLeft = 0
+            puzzleExpiredPending = true
             flashUnfound()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self, self.screen == .playing else { return }
+                self.puzzleExpiredPending = false
                 self.generatePuzzle()
             }
         }
@@ -194,9 +270,9 @@ final class SwitchSearchEngine: ObservableObject {
         currentWords = words
         foundWords = []
         wordCells = [:]
-        puzzleLeft = difficulty.puzzleSeconds
-        selectedPath = []
-        selectionStart = nil
+        puzzleLeft = Double(difficulty.puzzleSeconds)
+        puzzleExpiredPending = false
+        resetSelection(clearHighlightsOnly: false)
 
         let size = difficulty.gridSize
         var raw: [[String?]] = Array(
@@ -280,7 +356,6 @@ final class SwitchSearchEngine: ObservableObject {
                 return positions
             }
         }
-        // Fallback: place horizontally at 0,0 if possible
         var positions: [(Int, Int)] = []
         for i in 0 ..< min(letters.count, size) {
             grid[0][i] = String(letters[i])
@@ -322,22 +397,28 @@ final class SwitchSearchEngine: ObservableObject {
     }
 
     private func checkSelection(_ path: [(Int, Int)]) {
-        defer {
-            clearHighlights()
-            selectedPath = []
-        }
+        defer { resetSelection(clearHighlightsOnly: true) }
         guard path.count >= 2 else { return }
-        let formed = path.map { grid[$0.0][$0.1].letter }.joined().lowercased()
-        guard currentWords.map({ $0.lowercased() }).contains(formed),
-              !foundWords.contains(formed)
-        else { return }
+
+        let forward = path.map { grid[$0.0][$0.1].letter }.joined().lowercased()
+        let reverse = String(forward.reversed())
+        let candidates = currentWords.map { $0.lowercased() }
+        let formed: String?
+        if candidates.contains(forward), !foundWords.contains(forward) {
+            formed = forward
+        } else if candidates.contains(reverse), !foundWords.contains(reverse) {
+            formed = reverse
+        } else {
+            return
+        }
+        guard let formed else { return }
 
         foundWords.insert(formed)
         totalFound += 1
         let cells = wordCells[formed] ?? path
         for (r, c) in cells {
             grid[r][c].found = true
-            grid[r][c].highlighted = false
+            grid[r][c].unfoundFlash = false
         }
         if foundWords.count == currentWords.count {
             isFrozen = true
@@ -359,38 +440,20 @@ final class SwitchSearchEngine: ObservableObject {
         }
     }
 
-    private func applyHighlight(path: [(Int, Int)]) {
-        clearHighlights(keepFound: true)
-        for (r, c) in path {
-            if !grid[r][c].found {
-                grid[r][c].highlighted = true
-            }
-        }
-    }
-
-    private func clearHighlights(keepFound: Bool = true) {
-        for r in grid.indices {
-            for c in grid[r].indices {
-                grid[r][c].highlighted = false
-                if !keepFound { grid[r][c].unfoundFlash = false }
-                else { grid[r][c].unfoundFlash = false }
-            }
-        }
-    }
-
     private func path(from start: (Int, Int), to end: (Int, Int)) -> [(Int, Int)] {
         let dr = end.0 - start.0
         let dc = end.1 - start.1
         let steps = max(abs(dr), abs(dc))
         guard steps > 0 else { return [start] }
-        // Only allow straight lines (row, col, or diagonal)
         if !(dr == 0 || dc == 0 || abs(dr) == abs(dc)) {
             return [start]
         }
+        let rowStep = dr == 0 ? 0 : dr / abs(dr)
+        let colStep = dc == 0 ? 0 : dc / abs(dc)
         var result: [(Int, Int)] = []
         for i in 0 ... steps {
-            let r = start.0 + Int(round(Double(dr) * Double(i) / Double(steps)))
-            let c = start.1 + Int(round(Double(dc) * Double(i) / Double(steps)))
+            let r = start.0 + rowStep * i
+            let c = start.1 + colStep * i
             if grid.indices.contains(r), grid[r].indices.contains(c) {
                 result.append((r, c))
             }

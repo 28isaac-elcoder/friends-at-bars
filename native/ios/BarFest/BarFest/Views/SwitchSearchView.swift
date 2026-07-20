@@ -1,9 +1,10 @@
 import SwiftUI
+import UIKit
 
 /// Casual Switch Search — Easy/Hard word-search (web parity, no ranked).
-/// Native dark styling with a subtle Easy/Hard tint difference.
 struct SwitchSearchView: View {
     @StateObject private var engine = SwitchSearchEngine()
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -18,28 +19,17 @@ struct SwitchSearchView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(screenBackground.ignoresSafeArea())
-        .navigationBarBackButtonHidden(engine.screen != .home)
+        // No system back chevron — Exit / Games handle leaving.
+        .navigationBarBackButtonHidden(true)
+        .toolbar(engine.screen == .home ? .visible : .hidden, for: .navigationBar)
+        .background(
+            InteractivePopGestureDisabler(disabled: engine.screen != .home)
+                .frame(width: 0, height: 0)
+        )
         .onAppear { engine.appear() }
     }
 
-    /// Subtle Easy vs Hard: Hard gets a slightly cooler/darker chrome — not a full white↔black flip.
-    private var screenBackground: Color {
-        engine.difficulty == .easy
-            ? Color(uiColor: .systemBackground)
-            : Color(red: 0.07, green: 0.08, blue: 0.1)
-    }
-
-    private var cellFill: Color {
-        engine.difficulty == .easy
-            ? Color.white.opacity(0.12)
-            : Color.white.opacity(0.07)
-    }
-
-    private var cellBorder: Color {
-        engine.difficulty == .easy
-            ? Color.white.opacity(0.22)
-            : Color.cyan.opacity(0.22)
-    }
+    private var screenBackground: Color { Color.black }
 
     // MARK: - Home
 
@@ -48,9 +38,10 @@ struct SwitchSearchView: View {
             Spacer()
             Text("Switch Search")
                 .font(.largeTitle.bold())
+                .foregroundStyle(.white)
             Text("Find the hidden words before time runs out. Clear a puzzle to swap in a new one.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -66,7 +57,7 @@ struct SwitchSearchView: View {
                   ? "7×7 · 42s session · 12s per puzzle · full word hints"
                   : "8×8 · 56s session · 16s per puzzle · letter hints")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -87,37 +78,29 @@ struct SwitchSearchView: View {
             Spacer()
         }
         .padding()
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Games") { dismiss() }
+                    .foregroundStyle(.white)
+            }
+        }
     }
 
     // MARK: - Game
 
     private var gameScreen: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Button("Exit") { engine.exitToHome() }
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("Found \(engine.totalFound)")
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                Spacer()
-                Button("Skip") { engine.skipPuzzle() }
-                    .font(.subheadline.weight(.semibold))
-            }
-            .padding(.horizontal)
+        VStack(spacing: 10) {
+            Text("Found \(engine.totalFound)")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .padding(.top, 4)
 
             progressBar(
                 label: "Session",
-                value: Double(engine.sessionLeft),
+                value: engine.sessionLeft,
                 total: Double(engine.difficulty.sessionSeconds),
                 tint: engine.isFrozen ? .cyan : .accentColor
-            )
-            .padding(.horizontal)
-
-            progressBar(
-                label: "Puzzle",
-                value: Double(engine.puzzleLeft),
-                total: Double(engine.difficulty.puzzleSeconds),
-                tint: .orange
             )
             .padding(.horizontal)
 
@@ -127,18 +110,37 @@ struct SwitchSearchView: View {
                     .foregroundStyle(.cyan)
             }
 
+            if engine.selectionMode == .awaitingEnd {
+                Text("Tap the last letter")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+
             letterGrid
                 .padding(.horizontal, 8)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(engine.difficulty == .easy ? "Words" : "Hints")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 72), spacing: 8)],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
+            progressBar(
+                label: "Puzzle",
+                value: engine.puzzleLeft,
+                total: Double(engine.difficulty.puzzleSeconds),
+                tint: .orange
+            )
+            .padding(.horizontal)
+
+            Text("Find These Words:")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(maxWidth: .infinity)
+
+            HStack(alignment: .center, spacing: 8) {
+                Button("Exit") { engine.exitToHome() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 52, alignment: .leading)
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 8) {
                     ForEach(Array(engine.hints.enumerated()), id: \.offset) { idx, hint in
                         let word = idx < engine.currentWords.count
                             ? engine.currentWords[idx].lowercased()
@@ -148,119 +150,105 @@ struct SwitchSearchView: View {
                             .font(.caption.weight(.semibold).monospaced())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(isFound ? Color.green.opacity(0.25) : Color.white.opacity(0.1))
-                            .foregroundStyle(isFound ? Color.green : Color.primary)
+                            .background(isFound ? Color.white : Color.white.opacity(0.12))
+                            .foregroundStyle(isFound ? Color.black : Color.white)
                             .clipShape(Capsule())
-                            .strikethrough(isFound)
+                            .strikethrough(isFound, color: .black.opacity(0.5))
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
 
-            Button("Restart") { engine.restart() }
-                .font(.subheadline)
-                .padding(.bottom, 8)
+                Spacer(minLength: 4)
+
+                Button("Skip") { engine.skipPuzzle() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 52, alignment: .trailing)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private var letterGrid: some View {
         let size = engine.difficulty.gridSize
         return GeometryReader { geo in
             let gap: CGFloat = 3
-            let cell = (min(geo.size.width, geo.size.height) - gap * CGFloat(size - 1)) / CGFloat(size)
+            let side = min(geo.size.width, geo.size.height)
+            let cell = (side - gap * CGFloat(size - 1)) / CGFloat(size)
             let gridSide = cell * CGFloat(size) + gap * CGFloat(size - 1)
 
-            ZStack(alignment: .topLeading) {
+            ZStack {
                 VStack(spacing: gap) {
                     ForEach(engine.grid.indices, id: \.self) { r in
                         HStack(spacing: gap) {
                             ForEach(engine.grid[r]) { cellModel in
+                                let selected = engine.isSelected(row: cellModel.row, col: cellModel.col)
+                                let inverted = selected || cellModel.found
                                 Text(cellModel.letter)
                                     .font(.system(size: max(12, cell * 0.42), weight: .bold, design: .rounded))
-                                    .foregroundStyle(letterColor(cellModel))
+                                    .foregroundStyle(inverted ? Color.black : Color.white)
                                     .frame(width: cell, height: cell)
-                                    .background(cellBackground(cellModel))
+                                    .background(
+                                        cellModel.unfoundFlash
+                                            ? Color.gray
+                                            : (inverted ? Color.white : Color.white.opacity(0.08))
+                                    )
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .strokeBorder(cellBorder, lineWidth: 1)
+                                            .strokeBorder(
+                                                inverted ? Color.white : Color.white.opacity(0.25),
+                                                lineWidth: 1
+                                            )
                                     )
-                                    .allowsHitTesting(false)
                             }
                         }
                     }
                 }
-                .frame(width: gridSide, height: gridSide)
-                .overlay {
-                    if engine.isFrozen {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color.cyan.opacity(0.5), lineWidth: 2)
-                    }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                        .onChanged { value in
-                            guard let (r, c) = cellAt(value.location, cell: cell, gap: gap, size: size) else { return }
-                            engine.updateSelect(row: r, col: c)
-                        }
-                        .onEnded { value in
-                            if let (r, c) = cellAt(value.location, cell: cell, gap: gap, size: size) {
-                                engine.endSelect(row: r, col: c)
-                            } else if let last = engine.selectedPath.last {
-                                engine.endSelect(row: last.0, col: last.1)
-                            }
-                        }
+                .allowsHitTesting(false)
+
+                SwitchSearchTouchPad(
+                    gridSize: size,
+                    cell: cell,
+                    gap: gap,
+                    onMove: { r, c in engine.pointerMoved(toRow: r, col: c) },
+                    onEnd: { r, c in engine.pointerEnded(atRow: r, col: c) }
                 )
+                .frame(width: gridSide, height: gridSide)
+
+                if engine.isFrozen {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.cyan.opacity(0.5), lineWidth: 2)
+                        .frame(width: gridSide, height: gridSide)
+                        .allowsHitTesting(false)
+                }
             }
+            .frame(width: gridSide, height: gridSide)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .aspectRatio(1, contentMode: .fit)
     }
 
-    private func cellAt(_ point: CGPoint, cell: CGFloat, gap: CGFloat, size: Int) -> (Int, Int)? {
-        let stride = cell + gap
-        guard stride > 0 else { return nil }
-        let c = Int(point.x / stride)
-        let r = Int(point.y / stride)
-        guard r >= 0, c >= 0, r < size, c < size else { return nil }
-        // Ignore taps that land in the gap strip between cells
-        let localX = point.x - CGFloat(c) * stride
-        let localY = point.y - CGFloat(r) * stride
-        if localX > cell || localY > cell { return nil }
-        return (r, c)
-    }
-
-    private func cellBackground(_ cell: SwitchSearchCell) -> Color {
-        if cell.unfoundFlash { return Color.gray.opacity(0.55) }
-        if cell.found { return Color.green.opacity(0.35) }
-        if cell.highlighted { return Color.cyan.opacity(0.45) }
-        return cellFill
-    }
-
-    private func letterColor(_ cell: SwitchSearchCell) -> Color {
-        if cell.found { return .green }
-        return .primary
-    }
-
     private func progressBar(label: String, value: Double, total: Double, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let displaySeconds = Int(ceil(max(0, value)))
+        let fraction = max(0, min(1, value / max(total, 0.0001)))
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.55))
                 Spacer()
-                Text("\(Int(max(0, value)))s")
+                Text("\(displaySeconds)s")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.55))
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule().fill(Color.white.opacity(0.12))
                     Capsule()
                         .fill(tint)
-                        .frame(width: geo.size.width * max(0, min(1, value / max(total, 1))))
+                        .frame(width: geo.size.width * fraction)
                 }
             }
             .frame(height: 6)
@@ -274,9 +262,10 @@ struct SwitchSearchView: View {
             Spacer()
             Text("Time is up!")
                 .font(.largeTitle.bold())
+                .foregroundStyle(.white)
             Text("You found \(engine.totalFound) word\(engine.totalFound == 1 ? "" : "s").")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.7))
             Button {
                 engine.restart()
             } label: {
@@ -292,7 +281,41 @@ struct SwitchSearchView: View {
             .padding(.horizontal, 40)
             Button("Exit") { engine.exitToHome() }
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
             Spacer()
+        }
+    }
+}
+
+// MARK: - Block NavigationStack swipe-back while playing
+
+private struct InteractivePopGestureDisabler: UIViewControllerRepresentable {
+    var disabled: Bool
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {
+        uiViewController.disabled = disabled
+        uiViewController.apply()
+    }
+
+    final class Controller: UIViewController {
+        var disabled = false
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            apply()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        }
+
+        func apply() {
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = !disabled
         }
     }
 }
