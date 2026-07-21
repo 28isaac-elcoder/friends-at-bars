@@ -96,7 +96,7 @@ EXECUTE FUNCTION refresh_chat_post_score();
 -- -----------------------------------------------------------------------------
 -- Create post (rate limit + live_locations anti-spoof check)
 -- Requires an active live_locations row for author at venue_name,
--- updated within the last 10 minutes (matches app LIVE_LOCATION_MAX_AGE_MS).
+-- updated within the last 18 minutes (native heartbeat 15m + grace; matches AppConfig.liveLocationChatFreshnessSeconds).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION create_chat_post(
   p_author_id TEXT,
@@ -146,7 +146,7 @@ BEGIN
     WHERE user_id = p_author_id
       AND venue_name = trim(p_venue_name)
       AND is_active = true
-      AND last_updated > NOW() - INTERVAL '10 minutes'
+      AND last_updated > NOW() - INTERVAL '18 minutes'
   )
   INTO location_ok;
 

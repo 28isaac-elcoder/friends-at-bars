@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct GamesHubView: View {
+    @State private var showSwitchSearch = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -11,11 +13,19 @@ struct GamesHubView: View {
                     Text("Mega Toe — placeholder board. Port full rules from React in a follow-up.")
                         .padding()
                 }
-                NavigationLink("Switch Search") {
-                    SwitchSearchView()
+                Button {
+                    showSwitchSearch = true
+                } label: {
+                    Text("Switch Search")
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
             }
             .navigationTitle("Games")
+            .fullScreenCover(isPresented: $showSwitchSearch) {
+                SwitchSearchView()
+            }
         }
     }
 }

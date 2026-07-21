@@ -25,7 +25,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private var venues: [VenueRecord] = []
     private var supabase: SupabaseLiveLocationAPI?
     private var userId: String = ""
-    private var heartbeatMs: Int = 300_000
+    private var heartbeatMs: Int = AppConfig.liveLocationHeartbeatMs
     private var pollIntervalMs: Int = 10_000
     private var venueRadiusM: Double = 100
     private var skipSupabase = false
@@ -112,7 +112,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                 supabaseAnonKey: anonKey,
                 userId: userId,
                 venues: venues,
-                heartbeatMs: heartbeatMs > 0 ? heartbeatMs : 300_000,
+                heartbeatMs: heartbeatMs > 0 ? heartbeatMs : AppConfig.liveLocationHeartbeatMs,
                 pollIntervalMs: pollIntervalMs > 0 ? pollIntervalMs : 10_000,
                 venueRadiusM: venueRadiusM > 0 ? venueRadiusM : 100,
                 skipSupabase: skipSupabase
@@ -287,8 +287,10 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         guard writeDecision.venueChanged || writeDecision.heartbeatDue else {
+            let msSince = queue.sync { Date().timeIntervalSince1970 * 1000 - lastWriteAtMs }
+            let nextIn = max(0, Double(heartbeatMs) - msSince)
             logLocationDiag(
-                "skipWrite venue=\(writeDecision.name) (unchanged, heartbeat not due)"
+                "skipWrite venue=\(writeDecision.name) (unchanged, heartbeat in \(Int(nextIn / 1000))s)"
             )
             return
         }

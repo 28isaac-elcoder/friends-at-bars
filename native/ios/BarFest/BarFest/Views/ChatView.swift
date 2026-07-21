@@ -288,7 +288,9 @@ struct ChatView: View {
                     Text(
                         useLocal
                             ? "Allow Location to Chat — tap to enable (simulate)"
-                            : "Allow Location to Chat — tap to enable"
+                            : (locationAuth.needsAlwaysUpgrade
+                               ? "Allow Location Always to Chat — upgrade from While Using"
+                               : "Allow Location Always to Chat — tap to enable")
                     )
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)

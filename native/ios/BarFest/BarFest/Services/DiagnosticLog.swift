@@ -42,6 +42,13 @@ final class DiagnosticLog: ObservableObject {
         }
     }
 
+    /// Safe from CoreLocation / URLSession callbacks off the main actor.
+    nonisolated static func log(category: String, message: String, level: String = "info") {
+        Task { @MainActor in
+            shared.append(category: category, message: message, level: level)
+        }
+    }
+
     func clear() {
         entries.removeAll()
     }

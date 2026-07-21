@@ -62,12 +62,17 @@ final class AppModel: ObservableObject {
             wordPackReady = cmsLibrary != nil || !wordPack.isEmpty
             if TestModeStore.shared.useMockCheckIns {
                 venueCounts = mockVenueCounts(from: venues)
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "venueCounts using Test Mode mock (\(venueCounts.count) venues)"
+                )
             } else {
                 venueCounts = try await LiveLocationService.venueCounts()
             }
             locationBridge.updateVenues(venues)
             errorMessage = nil
             await logCatalogDiagnostics(source: "refresh")
+            await logHeadcountSnapshot(source: "refresh")
         } catch {
             errorMessage = error.localizedDescription
             venues = await CatalogStore.shared.venues
@@ -79,6 +84,26 @@ final class AppModel: ObservableObject {
             )
             await logCatalogDiagnostics(source: "refresh-failed-partial")
         }
+    }
+
+    /// Pull-to-refresh focused path: refresh catalog + live headcounts and log clearly.
+    func refreshHeadcounts(source: String = "pull-to-refresh") async {
+        DiagnosticLog.shared.append(
+            category: "location",
+            message: "headcount refresh begin source=\(source) authAlways=\(LocationAuthorizationStore.shared.isAuthorized) lastVenue=\(lastVenueName ?? "nil")"
+        )
+        await refreshCatalog()
+    }
+
+    private func logHeadcountSnapshot(source: String) async {
+        let total = venueCounts.values.reduce(0, +)
+        let top = venueCounts.sorted { $0.value > $1.value }.prefix(5)
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ", ")
+        DiagnosticLog.shared.append(
+            category: "location",
+            message: "headcount snapshot[\(source)] people=\(total) venues=\(venueCounts.count) maxAgeSec=\(AppConfig.liveLocationCountMaxAgeSeconds) top=\(top.isEmpty ? "(none)" : top)"
+        )
     }
 
     /// Logs listing/venue breakdown to help diagnose Deals showing fewer rows than expected.
@@ -144,7 +169,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
                 supabaseAnonKey: AppConfig.supabaseAnonKey,
                 userId: AnonymousIdentity.userId(),
                 venues: records,
-                heartbeatMs: 300_000,
+                heartbeatMs: AppConfig.liveLocationHeartbeatMs,
                 pollIntervalMs: 10_000,
                 venueRadiusM: AppConfig.venueRadiusMeters,
                 skipSupabase: false
@@ -155,7 +180,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             let uid = String(AnonymousIdentity.userId().prefix(12))
             DiagnosticLog.shared.append(
                 category: "location",
-                message: "Tracking start requested venues=\(records.count) auth=\(auth) userId=\(uid)… radius=\(Int(AppConfig.venueRadiusMeters))m"
+                message: "Tracking start requested venues=\(records.count) auth=\(auth) userId=\(uid)… radius=\(Int(AppConfig.venueRadiusMeters))m heartbeatMs=\(AppConfig.liveLocationHeartbeatMs) countMaxAgeSec=\(AppConfig.liveLocationCountMaxAgeSeconds)"
             )
         } catch {
             print("LocationBridge start: \(error)")
@@ -176,10 +201,14 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             supabaseAnonKey: AppConfig.supabaseAnonKey,
             userId: AnonymousIdentity.userId(),
             venues: records,
-            heartbeatMs: 300_000,
+            heartbeatMs: AppConfig.liveLocationHeartbeatMs,
             pollIntervalMs: 10_000,
             venueRadiusM: AppConfig.venueRadiusMeters,
             skipSupabase: false
+        )
+        DiagnosticLog.shared.append(
+            category: "location",
+            message: "Venues updated count=\(records.count) heartbeatMs=\(AppConfig.liveLocationHeartbeatMs)"
         )
     }
 

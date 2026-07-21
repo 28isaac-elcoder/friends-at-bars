@@ -13,7 +13,12 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
     private let manager = CLLocationManager()
 
     var isAuthorized: Bool {
-        status == .authorizedAlways || status == .authorizedWhenInUse
+        status == .authorizedAlways
+    }
+
+    /// True when OS location is on but not Always — UI should push upgrade, not unlock live features.
+    var needsAlwaysUpgrade: Bool {
+        status == .authorizedWhenInUse
     }
 
     private override init() {
@@ -72,11 +77,13 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
             manager.requestAlwaysAuthorization()
         case .denied, .restricted:
             lastPromptMessage =
-                "Set Location to Always (recommended) or While Using in Settings, then return to the app."
+                "Set Location to Always in Settings, then return to the app. Live bar counts need Always access."
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
         case .authorizedWhenInUse:
+            lastPromptMessage =
+                "Please choose Always Allow so live bar attendance can update in the background."
             manager.requestAlwaysAuthorization()
             DiagnosticLog.shared.append(
                 category: "location",

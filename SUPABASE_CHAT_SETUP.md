@@ -115,7 +115,7 @@ EXECUTE FUNCTION refresh_chat_post_score();
 -- -----------------------------------------------------------------------------
 -- Create post (rate limit + live_locations anti-spoof check)
 -- Requires an active live_locations row for author at venue_name,
--- updated within the last 10 minutes (matches app LIVE_LOCATION_MAX_AGE_MS).
+-- updated within the last 18 minutes (matches native AppConfig.liveLocationChatFreshnessSeconds).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION create_chat_post(
   p_author_id TEXT,
@@ -165,7 +165,7 @@ BEGIN
     WHERE user_id = p_author_id
       AND venue_name = trim(p_venue_name)
       AND is_active = true
-      AND last_updated > NOW() - INTERVAL '10 minutes'
+      AND last_updated > NOW() - INTERVAL '18 minutes'
   )
   INTO location_ok;
 
@@ -399,7 +399,7 @@ SELECT cleanup_expired_chat_posts();
 |------|-------------|
 | Max 150 characters | `CHECK` + `create_chat_post` |
 | Max 5 posts / user / hour | `create_chat_post` |
-| Must be at a bar | `live_locations` active + fresh (10 min) + matching `venue_name` |
+| Must be at a bar | `live_locations` active + fresh (18 min) + matching `venue_name` |
 | No self-votes | `set_chat_vote` |
 | Toggle vote off | Same direction again deletes vote |
 | Soft-hide at ≤ −4 | Vote trigger (sticky) |

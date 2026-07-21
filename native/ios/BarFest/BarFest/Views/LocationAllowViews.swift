@@ -4,7 +4,7 @@ import SwiftUI
 struct LocationAllowStrip: View {
     @ObservedObject private var auth = LocationAuthorizationStore.shared
     var label: String =
-        "Tap here to enable Location and see how busy each bar is right now!"
+        "Tap here to enable Location Always and see how busy each bar is right now!"
     var busyLabel: String = "Opening…"
     @State private var busy = false
 
@@ -44,9 +44,9 @@ struct LocationAllowStrip: View {
 /// Full-screen style prompt for Map (web MapLocationPermissionPrompt parity).
 struct LocationAllowOverlay: View {
     @ObservedObject private var auth = LocationAuthorizationStore.shared
-    var title: String = "Allow location access"
+    var title: String = "Allow Location Always"
     var description: String =
-        "Enable location to browse attendance and deals at your favorite bars."
+        "Bar Fest needs Location Always so live attendance can update while you're out. Enable Always to browse how busy bars are and chat from a venue."
     @State private var busy = false
 
     var body: some View {
@@ -70,7 +70,7 @@ struct LocationAllowOverlay: View {
                             busy = false
                         }
                     } label: {
-                        Text(busy ? "Opening…" : "Allow location access")
+                        Text(busy ? "Opening…" : "Allow Location Always")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -80,6 +80,14 @@ struct LocationAllowOverlay: View {
                     }
                     .padding(.horizontal, 24)
                     .disabled(busy)
+
+                    if auth.needsAlwaysUpgrade {
+                        Text("You chose While Using — switch to Always in Settings for live counts.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
 
                     if let msg = auth.lastPromptMessage {
                         Text(msg)
@@ -124,12 +132,20 @@ struct ActivitiesLocationInlineGate: View {
                 .symbolRenderingMode(.hierarchical)
 
             Text(
-                "Location access is disabled. To find bars in your area and see how busy they are, please enable location services in your settings. It will never be shared."
+                "Location Always is required. To find bars nearby and see how busy they are, enable Location → Always in Settings. It will never be shared."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
+
+            if auth.needsAlwaysUpgrade {
+                Text("Currently set to While Using — change it to Always to unlock live attendance.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
 
             Button {
                 busy = true
@@ -138,7 +154,7 @@ struct ActivitiesLocationInlineGate: View {
                     busy = false
                 }
             } label: {
-                Text(busy ? "Opening…" : "Open Settings")
+                Text(busy ? "Opening…" : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Open Settings"))
                     .font(.headline)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)

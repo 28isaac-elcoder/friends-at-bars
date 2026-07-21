@@ -17,11 +17,29 @@ enum ChatService {
     }
 
     static func createPost(body: String, venueName: String) async throws {
-        try await SupabaseClient.shared.rpcVoid("create_chat_post", params: [
-            "p_author_id": AnonymousIdentity.userId(),
-            "p_body": body,
-            "p_venue_name": venueName,
-        ])
+        let uid = String(AnonymousIdentity.userId().prefix(12))
+        DiagnosticLog.log(
+            category: "location",
+            message: "chat create_chat_post venue=\(venueName) userId=\(uid)… freshnessWindowSec=\(AppConfig.liveLocationChatFreshnessSeconds)"
+        )
+        do {
+            try await SupabaseClient.shared.rpcVoid("create_chat_post", params: [
+                "p_author_id": AnonymousIdentity.userId(),
+                "p_body": body,
+                "p_venue_name": venueName,
+            ])
+            DiagnosticLog.log(
+                category: "location",
+                message: "chat create_chat_post ok venue=\(venueName)"
+            )
+        } catch {
+            DiagnosticLog.log(
+                category: "location",
+                message: "chat create_chat_post failed venue=\(venueName): \(error.localizedDescription)",
+                level: "error"
+            )
+            throw error
+        }
     }
 
     /// direction: "up" | "down" — same direction again clears (RPC behavior).
@@ -55,7 +73,7 @@ enum ChatService {
 }
 
 enum LiveLocationService {
-    static func venueCounts(maxAgeSeconds: Int = 900) async throws -> [String: Int] {
+    static func venueCounts(maxAgeSeconds: Int = AppConfig.liveLocationCountMaxAgeSeconds) async throws -> [String: Int] {
         struct Row: Decodable {
             let venue_name: String
             let is_active: Bool?

@@ -1,7 +1,7 @@
 import SwiftUI
-import UIKit
 
 /// Casual Switch Search — Easy/Hard word-search (web parity, no ranked).
+/// Presented via fullScreenCover from Games (no nav swipe-back).
 struct SwitchSearchView: View {
     @StateObject private var engine = SwitchSearchEngine()
     @Environment(\.dismiss) private var dismiss
@@ -19,13 +19,8 @@ struct SwitchSearchView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(screenBackground.ignoresSafeArea())
-        // No system back chevron — Exit / Games handle leaving.
-        .navigationBarBackButtonHidden(true)
-        .toolbar(engine.screen == .home ? .visible : .hidden, for: .navigationBar)
-        .background(
-            InteractivePopGestureDisabler(disabled: engine.screen != .home)
-                .frame(width: 0, height: 0)
-        )
+        // Presented as fullScreenCover — no NavigationStack pop / edge swipe-back.
+        .interactiveDismissDisabled(true)
         .onAppear { engine.appear() }
     }
 
@@ -35,11 +30,19 @@ struct SwitchSearchView: View {
 
     private var homeScreen: some View {
         VStack(spacing: 28) {
+            HStack {
+                Button("Games") { dismiss() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+            .padding(.horizontal)
+
             Spacer()
             Text("Switch Search")
                 .font(.largeTitle.bold())
                 .foregroundStyle(.white)
-            Text("Find the hidden words before time runs out. Clear a puzzle to swap in a new one.")
+            Text("Find the hidden words before time runs out. Clear all words in a word search to swap to a new set and gain extra time.")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -54,8 +57,8 @@ struct SwitchSearchView: View {
             .padding(.horizontal, 40)
 
             Text(engine.difficulty == .easy
-                  ? "7×7 · 42s session · 12s per puzzle · full word hints"
-                  : "8×8 · 56s session · 16s per puzzle · letter hints")
+                  ? "7×7 · 42s game · 12s per word-search · full word hints"
+                  : "8×8 · 56s game · 16s per word-search · letter hints")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
@@ -78,12 +81,6 @@ struct SwitchSearchView: View {
             Spacer()
         }
         .padding()
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Games") { dismiss() }
-                    .foregroundStyle(.white)
-            }
-        }
     }
 
     // MARK: - Game
@@ -97,33 +94,23 @@ struct SwitchSearchView: View {
                 .padding(.top, 4)
 
             progressBar(
-                label: "Session",
+                label: "Game Timer",
                 value: engine.sessionLeft,
                 total: Double(engine.difficulty.sessionSeconds),
-                tint: engine.isFrozen ? .cyan : .accentColor
+                tint: engine.isFrozen ? .cyan : .accentColor,
+                frozen: engine.isFrozen
             )
             .padding(.horizontal)
-
-            if engine.isFrozen {
-                Text("Bonus freeze — session timer paused")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.cyan)
-            }
-
-            if engine.selectionMode == .awaitingEnd {
-                Text("Tap the last letter")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.65))
-            }
 
             letterGrid
                 .padding(.horizontal, 8)
 
             progressBar(
-                label: "Puzzle",
+                label: "Word-Search Timer",
                 value: engine.puzzleLeft,
                 total: Double(engine.difficulty.puzzleSeconds),
-                tint: .orange
+                tint: .orange,
+                frozen: false
             )
             .padding(.horizontal)
 
@@ -202,13 +189,6 @@ struct SwitchSearchView: View {
                     onEnd: { r, c in engine.pointerEnded(atRow: r, col: c) }
                 )
                 .frame(width: gridSide, height: gridSide)
-
-                if engine.isFrozen {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.cyan.opacity(0.5), lineWidth: 2)
-                        .frame(width: gridSide, height: gridSide)
-                        .allowsHitTesting(false)
-                }
             }
             .frame(width: gridSide, height: gridSide)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -216,18 +196,24 @@ struct SwitchSearchView: View {
         .aspectRatio(1, contentMode: .fit)
     }
 
-    private func progressBar(label: String, value: Double, total: Double, tint: Color) -> some View {
+    private func progressBar(
+        label: String,
+        value: Double,
+        total: Double,
+        tint: Color,
+        frozen: Bool
+    ) -> some View {
         let displaySeconds = Int(ceil(max(0, value)))
         let fraction = max(0, min(1, value / max(total, 0.0001)))
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(frozen ? Color.cyan : Color.white.opacity(0.55))
                 Spacer()
                 Text("\(displaySeconds)s")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(frozen ? Color.cyan : Color.white.opacity(0.55))
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -238,6 +224,12 @@ struct SwitchSearchView: View {
                 }
             }
             .frame(height: 6)
+            .overlay(
+                Capsule()
+                    .strokeBorder(frozen ? Color.cyan.opacity(0.9) : Color.clear, lineWidth: 1.5)
+                    .padding(-3)
+            )
+            .shadow(color: frozen ? Color.cyan.opacity(0.55) : .clear, radius: frozen ? 6 : 0)
         }
     }
 
@@ -302,38 +294,5 @@ private struct SwitchSearchLetterCell: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(border, lineWidth: 1)
             )
-    }
-}
-
-// MARK: - Block NavigationStack swipe-back while playing
-
-private struct InteractivePopGestureDisabler: UIViewControllerRepresentable {
-    var disabled: Bool
-
-    func makeUIViewController(context: Context) -> Controller {
-        Controller()
-    }
-
-    func updateUIViewController(_ uiViewController: Controller, context: Context) {
-        uiViewController.disabled = disabled
-        uiViewController.apply()
-    }
-
-    final class Controller: UIViewController {
-        var disabled = false
-
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            apply()
-        }
-
-        override func viewWillDisappear(_ animated: Bool) {
-            super.viewWillDisappear(animated)
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-        }
-
-        func apply() {
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = !disabled
-        }
     }
 }

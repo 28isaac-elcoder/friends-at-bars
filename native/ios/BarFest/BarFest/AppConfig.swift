@@ -22,4 +22,11 @@ enum AppConfig {
 
     static let venueRadiusMeters: Double = 100
     static let maxChatChars = 150
+
+    /// How often we re-upsert `live_locations` while staying at the same bar.
+    static let liveLocationHeartbeatMs: Int = 15 * 60 * 1000 // 15 minutes
+    /// Rows older than this are excluded from headcounts (heartbeat + grace).
+    static let liveLocationCountMaxAgeSeconds: Int = 18 * 60 // 18 minutes
+    /// Matches chat RPC freshness window (`create_chat_post`).
+    static let liveLocationChatFreshnessSeconds: Int = liveLocationCountMaxAgeSeconds
 }

@@ -64,11 +64,20 @@ final class SupabaseLiveLocationAPI {
         do {
             request.httpBody = try JSONEncoder().encode(body)
         } catch {
+            DiagnosticLog.log(
+                category: "location",
+                message: "upsert encode failed venue=\(venueName): \(error.localizedDescription)",
+                level: "error"
+            )
             completion(.failure(error))
             return
         }
 
-        run(request: request, completion: completion)
+        DiagnosticLog.log(
+            category: "location",
+            message: "upsert POST live_locations venue=\(venueName) userId=\(String(userId.prefix(12)))…"
+        )
+        run(request: request, label: "upsert:\(venueName)", completion: completion)
     }
 
     func deactivateLiveLocation(
@@ -102,11 +111,20 @@ final class SupabaseLiveLocationAPI {
         do {
             request.httpBody = try JSONEncoder().encode(body)
         } catch {
+            DiagnosticLog.log(
+                category: "location",
+                message: "deactivate encode failed: \(error.localizedDescription)",
+                level: "error"
+            )
             completion(.failure(error))
             return
         }
 
-        run(request: request, completion: completion)
+        DiagnosticLog.log(
+            category: "location",
+            message: "deactivate PATCH live_locations userId=\(String(userId.prefix(12)))…"
+        )
+        run(request: request, label: "deactivate", completion: completion)
     }
 
     private func applyHeaders(_ request: inout URLRequest) {
@@ -115,21 +133,45 @@ final class SupabaseLiveLocationAPI {
         request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
     }
 
-    private func run(request: URLRequest, completion: @escaping (Result<Void, Error>) -> Void) {
+    private func run(
+        request: URLRequest,
+        label: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         session.dataTask(with: request) { data, response, error in
             if let error = error {
+                DiagnosticLog.log(
+                    category: "location",
+                    message: "\(label) network error: \(error.localizedDescription)",
+                    level: "error"
+                )
                 completion(.failure(error))
                 return
             }
             guard let http = response as? HTTPURLResponse else {
+                DiagnosticLog.log(
+                    category: "location",
+                    message: "\(label) no HTTP response",
+                    level: "error"
+                )
                 completion(.failure(SupabaseAPIError.httpStatus(-1, "No HTTP response")))
                 return
             }
             guard (200 ... 299).contains(http.statusCode) else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let snippet = String(body.prefix(180))
+                DiagnosticLog.log(
+                    category: "location",
+                    message: "\(label) HTTP \(http.statusCode) \(snippet)",
+                    level: "error"
+                )
                 completion(.failure(SupabaseAPIError.httpStatus(http.statusCode, body)))
                 return
             }
+            DiagnosticLog.log(
+                category: "location",
+                message: "\(label) ok HTTP \(http.statusCode)"
+            )
             completion(.success(()))
         }.resume()
     }

@@ -205,7 +205,7 @@ struct ActivitiesView: View {
             }
             .background(Color.black.ignoresSafeArea())
             .navigationTitle("Activities")
-            .refreshable { await reload() }
+            .refreshable { await reload(fromPullToRefresh: true) }
             .task { await reload() }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
@@ -244,8 +244,16 @@ struct ActivitiesView: View {
         }
     }
 
-    private func reload() async {
-        await appModel.refreshCatalog()
+    private func reload(fromPullToRefresh: Bool = false) async {
+        if fromPullToRefresh {
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "Activities pull-to-refresh — refreshing live headcounts"
+            )
+            await appModel.refreshHeadcounts(source: "activities-pull")
+        } else {
+            await appModel.refreshCatalog()
+        }
         if testMode.useMockCheckIns {
             checkIns = []
             error = nil
