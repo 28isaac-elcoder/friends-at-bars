@@ -4,8 +4,9 @@ import { supabase } from "./supabase";
 import { VenuesPanel } from "./VenuesPanel";
 import { ListingsPanel } from "./ListingsPanel";
 import { GameContentPanel } from "./GameContentPanel";
+import { MapPanel, type MapCoords } from "./MapPanel";
 
-type Tab = "venues" | "listings" | "games";
+type Tab = "venues" | "listings" | "games" | "map";
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -14,6 +15,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [venueSeed, setVenueSeed] = useState<MapCoords | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -71,8 +73,15 @@ export default function App() {
     );
   }
 
+  const shellClass =
+    tab === "map"
+      ? "app-shell map-mode"
+      : tab === "listings"
+        ? "app-shell wide"
+        : "app-shell";
+
   return (
-    <div className={tab === "listings" ? "app-shell wide" : "app-shell"}>
+    <div className={shellClass}>
       <header>
         <div>
           <h1>Bar Fest CMS</h1>
@@ -89,6 +98,7 @@ export default function App() {
             ["venues", "Venues"],
             ["listings", "Deals / Events"],
             ["games", "Game content"],
+            ["map", "Map"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -102,10 +112,23 @@ export default function App() {
         ))}
       </div>
 
-      <div className="panel">
-        {tab === "venues" && <VenuesPanel />}
+      <div className={tab === "map" ? "panel map-panel" : "panel"}>
+        {tab === "venues" && (
+          <VenuesPanel
+            seedCoords={venueSeed}
+            onSeedConsumed={() => setVenueSeed(null)}
+          />
+        )}
         {tab === "listings" && <ListingsPanel />}
         {tab === "games" && <GameContentPanel />}
+        {tab === "map" && (
+          <MapPanel
+            onStartVenue={(coords) => {
+              setVenueSeed(coords);
+              setTab("venues");
+            }}
+          />
+        )}
       </div>
     </div>
   );

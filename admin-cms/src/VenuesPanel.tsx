@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CatalogVenue, supabase } from "./supabase";
+import type { MapCoords } from "./MapPanel";
 
 const empty: Omit<CatalogVenue, "id"> = {
   name: "",
@@ -12,7 +13,15 @@ const empty: Omit<CatalogVenue, "id"> = {
   sort_order: 0,
 };
 
-export function VenuesPanel() {
+type VenuesPanelProps = {
+  seedCoords?: MapCoords | null;
+  onSeedConsumed?: () => void;
+};
+
+export function VenuesPanel({
+  seedCoords = null,
+  onSeedConsumed,
+}: VenuesPanelProps) {
   const [rows, setRows] = useState<CatalogVenue[]>([]);
   const [draft, setDraft] = useState(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,6 +42,18 @@ export function VenuesPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!seedCoords) return;
+    setEditingId(null);
+    setDraft({
+      ...empty,
+      latitude: seedCoords.latitude,
+      longitude: seedCoords.longitude,
+    });
+    onSeedConsumed?.();
+  }, [seedCoords]); // onSeedConsumed clears seed; omit from deps to avoid loops
+
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
