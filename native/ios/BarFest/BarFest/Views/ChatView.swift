@@ -5,6 +5,7 @@ struct ChatView: View {
     @ObservedObject private var testMode = TestModeStore.shared
     @ObservedObject private var localChat = TestChatStore.shared
     @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
+    @ObservedObject private var avatarStore = ChatAvatarStore.shared
 
     @State private var posts: [ChatPost] = []
     @State private var sort = "recent"
@@ -12,10 +13,12 @@ struct ChatView: View {
     @State private var error: String?
     @State private var selectMode = false
     @State private var selectedIds: Set<UUID> = []
+    @State private var showAvatarPicker = false
     @FocusState private var composerFocused: Bool
 
     private var useLocal: Bool { testMode.uiEnabled && testMode.useMockCheckIns }
     private var remaining: Int { AppConfig.maxChatChars - draft.count }
+    private var overCharLimit: Bool { remaining < 0 }
 
     private var venueOptions: [CatalogVenue] {
         appModel.venues.sorted {
@@ -151,6 +154,15 @@ struct ChatView: View {
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showAvatarPicker = true
+                    } label: {
+                        ChatAvatarBadge(selection: avatarStore.selection, size: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change chat icon")
+                }
                 if useLocal {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Clear local") {
@@ -160,6 +172,9 @@ struct ChatView: View {
                         .font(.caption)
                     }
                 }
+            }
+            .sheet(isPresented: $showAvatarPicker) {
+                ChatAvatarPickerSheet()
             }
             .task {
                 await load()
@@ -186,6 +201,14 @@ struct ChatView: View {
     @ViewBuilder
     private func chatRow(_ post: ChatPost) -> some View {
         let isOwn = post.author_id == AnonymousIdentity.userId()
+        let avatar = ChatAvatarResolver.selection(
+            for: post.author_id,
+            preference: avatarStore.selection
+        )
+        let bodyColor: Color = isOwn ? .black : .white
+        let metaColor: Color = isOwn ? Color.black.opacity(0.45) : Color.secondary
+        let rowBg: Color = isOwn ? .white : Color.clear
+
         HStack(alignment: .top, spacing: 10) {
             if selectMode && useLocal {
                 Image(systemName: selectedIds.contains(post.id) ? "checkmark.circle.fill" : "circle")
@@ -193,16 +216,19 @@ struct ChatView: View {
                     .onTapGesture { toggleSelect(post.id) }
             }
 
+            ChatAvatarBadge(selection: avatar, size: 36)
+
             VStack(alignment: .leading, spacing: 8) {
                 Text(post.body)
                     .font(.body)
+                    .foregroundStyle(bodyColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(alignment: .center, spacing: 8) {
                     HStack(spacing: 6) {
                         Text(post.venue_name)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(metaColor)
                         if post.author_id == TestChatStore.otherAuthorId {
                             Text("other")
                                 .font(.caption2)
@@ -215,6 +241,7 @@ struct ChatView: View {
                             score: post.score,
                             myVote: post.my_vote,
                             disabled: isOwn,
+                            onLightBackground: isOwn,
                             onUp: { Task { await vote(postId: post.id, direction: "up") } },
                             onDown: { Task { await vote(postId: post.id, direction: "down") } }
                         )
@@ -226,7 +253,12 @@ struct ChatView: View {
                 if selectMode && useLocal { toggleSelect(post.id) }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.horizontal, isOwn ? 10 : 0)
+        .padding(.vertical, 8)
+        .background(rowBg)
+        .clipShape(RoundedRectangle(cornerRadius: isOwn ? 12 : 0, style: .continuous))
+        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+        .listRowBackground(Color.clear)
         .swipeActions(edge: .trailing, allowsFullSwipe: !(selectMode && useLocal)) {
             if !(selectMode && useLocal) {
                 if isOwn {
@@ -264,7 +296,7 @@ struct ChatView: View {
                     .frame(maxWidth: 200)
                 }
 
-                HStack {
+                HStack(alignment: .center, spacing: 8) {
                     Text("Bar")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -274,6 +306,13 @@ struct ChatView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    Spacer(minLength: 8)
+                    if overCharLimit {
+                        Text("150 Character Limit")
+                            .font(.caption.bold())
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.trailing)
+                    }
                 }
             }
 
@@ -308,10 +347,21 @@ struct ChatView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
-                if !useLocal, let venue = effectiveVenueName {
-                    Text("Posting from \(venue)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if !useLocal {
+                    HStack(alignment: .center, spacing: 8) {
+                        if let venue = effectiveVenueName {
+                            Text("Posting from \(venue)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        if overCharLimit {
+                            Text("150 Character Limit")
+                                .font(.caption.bold())
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
                 }
 
                 HStack(alignment: .bottom, spacing: 8) {
@@ -320,8 +370,9 @@ struct ChatView: View {
                         text: $draft,
                         axis: .vertical
                     )
-                    .lineLimit(1 ... 4)
+                    .lineLimit(1 ... 3)
                     .font(.system(size: 17))
+                    .foregroundStyle(overCharLimit ? Color.red : Color.primary)
                     .focused($composerFocused)
                     .padding(10)
                     .background(Color(.secondarySystemBackground))
@@ -336,17 +387,8 @@ struct ChatView: View {
                     .disabled(
                         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !atVenue
-                            || remaining < 0
+                            || overCharLimit
                     )
-                }
-                .overlay(alignment: .topTrailing) {
-                    if remaining < 0 {
-                        Text("150 Character Limit")
-                            .font(.caption.bold())
-                            .foregroundStyle(.red)
-                            .padding(.trailing, 56)
-                            .padding(.top, 4)
-                    }
                 }
             }
         }

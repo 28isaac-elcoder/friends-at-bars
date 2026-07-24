@@ -5,17 +5,18 @@ struct RedditVotePill: View {
     let score: Int
     let myVote: Int?
     let disabled: Bool
+    var onLightBackground: Bool = false
     let onUp: () -> Void
     let onDown: () -> Void
 
     private var upTint: Color {
         if myVote == 1 { return Color.orange }
-        return .secondary
+        return onLightBackground ? Color.black.opacity(0.45) : .secondary
     }
 
     private var downTint: Color {
         if myVote == -1 { return Color.blue }
-        return .secondary
+        return onLightBackground ? Color.black.opacity(0.45) : .secondary
     }
 
     private var scoreTint: Color {
@@ -23,7 +24,7 @@ struct RedditVotePill: View {
         if myVote == -1 { return .blue }
         if score > 0 { return Color(red: 0.2, green: 0.55, blue: 0.3) }
         if score < 0 { return Color(red: 0.75, green: 0.2, blue: 0.2) }
-        return .primary
+        return onLightBackground ? .black : .primary
     }
 
     var body: some View {
@@ -44,7 +45,7 @@ struct RedditVotePill: View {
 
             Divider()
                 .frame(height: 18)
-                .overlay(Color.white.opacity(0.2))
+                .overlay(onLightBackground ? Color.black.opacity(0.15) : Color.white.opacity(0.2))
 
             Button(action: onDown) {
                 Image(systemName: "arrow.down")
@@ -56,10 +57,13 @@ struct RedditVotePill: View {
             .disabled(disabled)
         }
         .padding(.horizontal, 4)
-        .background(Color.white.opacity(0.08))
+        .background(onLightBackground ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
         .overlay(
             Capsule()
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .strokeBorder(
+                    onLightBackground ? Color.black.opacity(0.12) : Color.white.opacity(0.18),
+                    lineWidth: 1
+                )
         )
         .clipShape(Capsule())
     }

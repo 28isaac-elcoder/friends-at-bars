@@ -78,6 +78,11 @@ struct SwitchSearchView: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 40)
 
+            Button("Exit") { dismiss() }
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.top, 4)
+
             Spacer()
         }
         .padding()
@@ -115,36 +120,37 @@ struct SwitchSearchView: View {
             .padding(.horizontal)
 
             Text("Find These Words:")
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.55))
                 .frame(maxWidth: .infinity)
 
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
                 Button("Exit") { engine.exitToHome() }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 52, alignment: .leading)
 
-                Spacer(minLength: 4)
-
-                HStack(spacing: 8) {
+                HStack(spacing: 12) {
                     ForEach(Array(engine.hints.enumerated()), id: \.offset) { idx, hint in
                         let word = idx < engine.currentWords.count
                             ? engine.currentWords[idx].lowercased()
                             : ""
                         let isFound = engine.foundWords.contains(word)
                         Text(hint)
-                            .font(.caption.weight(.semibold).monospaced())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .font(.system(size: 26, weight: .bold, design: .rounded).monospaced())
+                            .minimumScaleFactor(0.55)
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, minHeight: 64)
                             .background(isFound ? Color.white : Color.white.opacity(0.12))
                             .foregroundStyle(isFound ? Color.black : Color.white)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .strikethrough(isFound, color: .black.opacity(0.5))
                     }
                 }
-
-                Spacer(minLength: 4)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 72)
 
                 Button("Skip") { engine.skipPuzzle() }
                     .font(.subheadline.weight(.semibold))
