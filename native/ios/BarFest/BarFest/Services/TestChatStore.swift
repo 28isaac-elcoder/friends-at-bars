@@ -5,7 +5,7 @@ import Combine
 @MainActor
 final class TestChatStore: ObservableObject {
     static let shared = TestChatStore()
-    static let otherAuthorId = "test_chat_other"
+    static nonisolated let otherAuthorId = "test_chat_other"
 
     enum Sender: String, CaseIterable, Identifiable {
         case user

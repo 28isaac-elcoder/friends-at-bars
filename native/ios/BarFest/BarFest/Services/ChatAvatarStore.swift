@@ -17,24 +17,35 @@ final class ChatAvatarStore: ObservableObject {
     private let changedKey = "chat_avatar_last_changed_v1"
 
     private init() {
+        let own: ChatAvatarSelection
+        let persistOwn: Bool
         if let data = UserDefaults.standard.data(forKey: selectionKey),
            let decoded = try? JSONDecoder().decode(ChatAvatarSelection.self, from: data) {
-            selection = decoded
+            own = decoded
+            persistOwn = false
         } else {
-            selection = ChatAvatarResolver.derived(from: AnonymousIdentity.userId())
-            persist(selection, key: selectionKey)
+            own = ChatAvatarSelection.random()
+            persistOwn = true
         }
 
+        let other: ChatAvatarSelection
+        let persistOther: Bool
         if let data = UserDefaults.standard.data(forKey: otherSelectionKey),
            let decoded = try? JSONDecoder().decode(ChatAvatarSelection.self, from: data) {
-            otherSelection = decoded
+            other = decoded
+            persistOther = false
         } else {
-            otherSelection = ChatAvatarResolver.derived(from: TestChatStore.otherAuthorId)
-            persist(otherSelection, key: otherSelectionKey)
+            other = ChatAvatarSelection.random()
+            persistOther = true
         }
 
         let ts = UserDefaults.standard.double(forKey: changedKey)
+        selection = own
+        otherSelection = other
         lastChangedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
+
+        if persistOwn { Self.write(own, key: selectionKey) }
+        if persistOther { Self.write(other, key: otherSelectionKey) }
     }
 
     var canChange: Bool {
@@ -63,7 +74,7 @@ final class ChatAvatarStore: ObservableObject {
         guard canChange else { return cooldownMessage }
         selection = next
         lastChangedAt = Date()
-        persist(selection, key: selectionKey)
+        Self.write(selection, key: selectionKey)
         UserDefaults.standard.set(lastChangedAt!.timeIntervalSince1970, forKey: changedKey)
         DiagnosticLog.shared.append(
             category: "chat",
@@ -77,14 +88,14 @@ final class ChatAvatarStore: ObservableObject {
         let next = ChatAvatarSelection(icon: icon, color: color)
         guard next != otherSelection else { return }
         otherSelection = next
-        persist(otherSelection, key: otherSelectionKey)
+        Self.write(otherSelection, key: otherSelectionKey)
         DiagnosticLog.shared.append(
             category: "chat",
             message: "Other avatar updated icon=\(icon.rawValue) color=\(color.rawValue)"
         )
     }
 
-    private func persist(_ value: ChatAvatarSelection, key: String) {
+    private static func write(_ value: ChatAvatarSelection, key: String) {
         if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: key)
         }

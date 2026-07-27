@@ -108,6 +108,14 @@ struct ChatAvatarSelection: Equatable, Codable {
     var color: ChatAvatarColor
 
     static let `default` = ChatAvatarSelection(icon: .beerPint, color: .blueMatte)
+
+    /// Fresh random icon + color (used for first-time assignment).
+    static func random() -> ChatAvatarSelection {
+        ChatAvatarSelection(
+            icon: ChatAvatarIcon.allCases.randomElement() ?? .beerPint,
+            color: ChatAvatarColor.allCases.randomElement() ?? .blueMatte
+        )
+    }
 }
 
 enum ChatAvatarResolver {
