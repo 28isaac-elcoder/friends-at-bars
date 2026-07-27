@@ -1,7 +1,7 @@
 /**
- * Dev-only test UI (bottom bar “Test Mode” + “Log” + in-app diagnostic logs).
+ * Dev-only test UI (bottom bar “Test Mode” + “Log” + “Games” + in-app diagnostic logs).
  *
- * Toggle here so iOS/device builds from GitHub include the Log screen without
+ * Toggle here so iOS/device builds from GitHub include the Log/Games screens without
  * relying on `.env.local` (which is not committed).
  *
  * Set to `false` before production releases to end users.

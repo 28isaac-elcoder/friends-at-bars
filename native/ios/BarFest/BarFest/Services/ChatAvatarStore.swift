@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Persists the user's chat avatar and enforces a 72-hour change cooldown.
+/// Persists chat avatars. Own icon has a 72-hour change cooldown; Test Mode "other user" does not.
 @MainActor
 final class ChatAvatarStore: ObservableObject {
     static let shared = ChatAvatarStore()
@@ -9,9 +9,11 @@ final class ChatAvatarStore: ObservableObject {
     static let cooldownSeconds: TimeInterval = 72 * 60 * 60
 
     @Published private(set) var selection: ChatAvatarSelection
+    @Published private(set) var otherSelection: ChatAvatarSelection
     @Published private(set) var lastChangedAt: Date?
 
     private let selectionKey = "chat_avatar_selection_v1"
+    private let otherSelectionKey = "chat_avatar_other_selection_v1"
     private let changedKey = "chat_avatar_last_changed_v1"
 
     private init() {
@@ -20,8 +22,17 @@ final class ChatAvatarStore: ObservableObject {
             selection = decoded
         } else {
             selection = ChatAvatarResolver.derived(from: AnonymousIdentity.userId())
-            persistSelection()
+            persist(selection, key: selectionKey)
         }
+
+        if let data = UserDefaults.standard.data(forKey: otherSelectionKey),
+           let decoded = try? JSONDecoder().decode(ChatAvatarSelection.self, from: data) {
+            otherSelection = decoded
+        } else {
+            otherSelection = ChatAvatarResolver.derived(from: TestChatStore.otherAuthorId)
+            persist(otherSelection, key: otherSelectionKey)
+        }
+
         let ts = UserDefaults.standard.double(forKey: changedKey)
         lastChangedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
@@ -52,7 +63,7 @@ final class ChatAvatarStore: ObservableObject {
         guard canChange else { return cooldownMessage }
         selection = next
         lastChangedAt = Date()
-        persistSelection()
+        persist(selection, key: selectionKey)
         UserDefaults.standard.set(lastChangedAt!.timeIntervalSince1970, forKey: changedKey)
         DiagnosticLog.shared.append(
             category: "chat",
@@ -61,9 +72,21 @@ final class ChatAvatarStore: ObservableObject {
         return nil
     }
 
-    private func persistSelection() {
-        if let data = try? JSONEncoder().encode(selection) {
-            UserDefaults.standard.set(data, forKey: selectionKey)
+    /// Test Mode other-user avatar — no cooldown.
+    func updateOther(icon: ChatAvatarIcon, color: ChatAvatarColor) {
+        let next = ChatAvatarSelection(icon: icon, color: color)
+        guard next != otherSelection else { return }
+        otherSelection = next
+        persist(otherSelection, key: otherSelectionKey)
+        DiagnosticLog.shared.append(
+            category: "chat",
+            message: "Other avatar updated icon=\(icon.rawValue) color=\(color.rawValue)"
+        )
+    }
+
+    private func persist(_ value: ChatAvatarSelection, key: String) {
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: key)
         }
     }
 }

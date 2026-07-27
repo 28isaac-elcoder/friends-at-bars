@@ -130,27 +130,29 @@ struct SwitchSearchView: View {
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 52, alignment: .leading)
 
-                HStack(spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
                     ForEach(Array(engine.hints.enumerated()), id: \.offset) { idx, hint in
                         let word = idx < engine.currentWords.count
                             ? engine.currentWords[idx].lowercased()
                             : ""
                         let isFound = engine.foundWords.contains(word)
-                        Text(hint)
+                        // Zero-width spaces let long hard-mode patterns wrap between glyphs
+                        // instead of truncating with "…".
+                        Text(Self.wrapFriendlyHint(hint))
                             .font(.system(size: 26, weight: .bold, design: .rounded).monospaced())
-                            .minimumScaleFactor(0.55)
-                            .lineLimit(1)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 16)
-                            .frame(maxWidth: .infinity, minHeight: 64)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
                             .background(isFound ? Color.white : Color.white.opacity(0.12))
                             .foregroundStyle(isFound ? Color.black : Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .strikethrough(isFound, color: .black.opacity(0.5))
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 72)
 
                 Button("Skip") { engine.skipPuzzle() }
                     .font(.subheadline.weight(.semibold))
@@ -161,6 +163,11 @@ struct SwitchSearchView: View {
             .padding(.bottom, 8)
         }
         .padding(.top, 4)
+    }
+
+    /// Insert zero-width spaces so monospaced hint strings can wrap mid-pattern.
+    private static func wrapFriendlyHint(_ hint: String) -> String {
+        hint.map(String.init).joined(separator: "\u{200B}")
     }
 
     private var letterGrid: some View {

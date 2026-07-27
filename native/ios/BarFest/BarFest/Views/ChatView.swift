@@ -13,7 +13,7 @@ struct ChatView: View {
     @State private var error: String?
     @State private var selectMode = false
     @State private var selectedIds: Set<UUID> = []
-    @State private var showAvatarPicker = false
+    @State private var avatarPickerTarget: ChatAvatarPickerTarget?
     @FocusState private var composerFocused: Bool
 
     private var useLocal: Bool { testMode.uiEnabled && testMode.useMockCheckIns }
@@ -155,13 +155,25 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showAvatarPicker = true
-                    } label: {
-                        ChatAvatarBadge(selection: avatarStore.selection, size: 32)
+                    HStack(spacing: 8) {
+                        Button {
+                            avatarPickerTarget = .own
+                        } label: {
+                            ChatAvatarBadge(selection: avatarStore.selection, size: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change chat icon")
+
+                        if useLocal {
+                            Button {
+                                avatarPickerTarget = .otherUser
+                            } label: {
+                                ChatAvatarBadge(selection: avatarStore.otherSelection, size: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Change other user chat icon")
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Change chat icon")
                 }
                 if useLocal {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -173,8 +185,8 @@ struct ChatView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showAvatarPicker) {
-                ChatAvatarPickerSheet()
+            .sheet(item: $avatarPickerTarget) { target in
+                ChatAvatarPickerSheet(target: target)
             }
             .task {
                 await load()
@@ -203,7 +215,8 @@ struct ChatView: View {
         let isOwn = post.author_id == AnonymousIdentity.userId()
         let avatar = ChatAvatarResolver.selection(
             for: post.author_id,
-            preference: avatarStore.selection
+            preference: avatarStore.selection,
+            otherPreference: avatarStore.otherSelection
         )
         let bodyColor: Color = isOwn ? .black : .white
         let metaColor: Color = isOwn ? Color.black.opacity(0.45) : Color.secondary

@@ -1,6 +1,22 @@
 import SwiftUI
 
+enum ChatAvatarPickerTarget: String, Identifiable {
+    case own
+    case otherUser
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .own: return "Your icon"
+        case .otherUser: return "Other user icon"
+        }
+    }
+}
+
 struct ChatAvatarPickerSheet: View {
+    let target: ChatAvatarPickerTarget
+
     @ObservedObject private var store = ChatAvatarStore.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -8,11 +24,19 @@ struct ChatAvatarPickerSheet: View {
     @State private var color: ChatAvatarColor
     @State private var message: String?
 
-    init() {
-        let current = ChatAvatarStore.shared.selection
+    init(target: ChatAvatarPickerTarget = .own) {
+        self.target = target
+        let current: ChatAvatarSelection = {
+            switch target {
+            case .own: return ChatAvatarStore.shared.selection
+            case .otherUser: return ChatAvatarStore.shared.otherSelection
+            }
+        }()
         _icon = State(initialValue: current.icon)
         _color = State(initialValue: current.color)
     }
+
+    private var enforceCooldown: Bool { target == .own }
 
     var body: some View {
         NavigationStack {
@@ -74,12 +98,18 @@ struct ChatAvatarPickerSheet: View {
                             .font(.subheadline)
                             .foregroundStyle(.orange)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if !store.canChange {
-                        Text(store.cooldownMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    } else if enforceCooldown {
+                        if !store.canChange {
+                            Text(store.cooldownMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("You can change your icon once every 3 days.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } else {
-                        Text("You can change your icon once every 3 days.")
+                        Text("Test Mode — change this icon anytime.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -87,7 +117,7 @@ struct ChatAvatarPickerSheet: View {
                 .padding()
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Your icon")
+            .navigationTitle(target.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -95,9 +125,15 @@ struct ChatAvatarPickerSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if let wait = store.tryUpdate(icon: icon, color: color) {
-                            message = wait
-                        } else {
+                        switch target {
+                        case .own:
+                            if let wait = store.tryUpdate(icon: icon, color: color) {
+                                message = wait
+                            } else {
+                                dismiss()
+                            }
+                        case .otherUser:
+                            store.updateOther(icon: icon, color: color)
                             dismiss()
                         }
                     }

@@ -2,41 +2,64 @@ import SwiftUI
 
 /// Nightlife-themed anonymous chat avatars (Yik Yak–style emoji on colored discs).
 enum ChatAvatarIcon: String, CaseIterable, Identifiable, Codable {
-    case beerCan
     case shotGlass
     case beerBong
     case martini
     case beerPint
     case wineBottle
     case olive
-    case lime
+    case champagne
+    case party
+    case disco
+    case popcorn
+    case cheers
+    case tropicalDrink
 
     var id: String { rawValue }
 
     var emoji: String {
         switch self {
-        case .beerCan: return "🥫"
         case .shotGlass: return "🥃"
         case .beerBong: return "🍻"
         case .martini: return "🍸"
         case .beerPint: return "🍺"
         case .wineBottle: return "🍷"
         case .olive: return "🫒"
-        case .lime: return "🍋"
+        case .champagne: return "🍾"
+        case .party: return "🎉"
+        case .disco: return "🪩"
+        case .popcorn: return "🍿"
+        case .cheers: return "🥂"
+        case .tropicalDrink: return "🍹"
         }
     }
 
     var label: String {
         switch self {
-        case .beerCan: return "Beer can"
         case .shotGlass: return "Shot glass"
         case .beerBong: return "Beer bong"
         case .martini: return "Martini"
         case .beerPint: return "Beer pint"
-        case .wineBottle: return "Wine bottle"
+        case .wineBottle: return "Wine"
         case .olive: return "Olive"
-        case .lime: return "Lime"
+        case .champagne: return "Champagne"
+        case .party: return "Party"
+        case .disco: return "Disco"
+        case .popcorn: return "Popcorn"
+        case .cheers: return "Cheers"
+        case .tropicalDrink: return "Tropical drink"
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        // Map removed icons (beerCan, lime) and unknown values to a safe default.
+        self = ChatAvatarIcon(rawValue: raw) ?? .beerPint
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
@@ -88,10 +111,17 @@ struct ChatAvatarSelection: Equatable, Codable {
 }
 
 enum ChatAvatarResolver {
-    /// Own preference when `authorId` is this device; otherwise a stable hash so others stay consistent.
-    static func selection(for authorId: String, preference: ChatAvatarSelection?) -> ChatAvatarSelection {
+    /// Own / other-user preference when matched; otherwise a stable hash so strangers stay consistent.
+    static func selection(
+        for authorId: String,
+        preference: ChatAvatarSelection?,
+        otherPreference: ChatAvatarSelection? = nil
+    ) -> ChatAvatarSelection {
         if authorId == AnonymousIdentity.userId(), let preference {
             return preference
+        }
+        if authorId == TestChatStore.otherAuthorId, let otherPreference {
+            return otherPreference
         }
         return derived(from: authorId)
     }
