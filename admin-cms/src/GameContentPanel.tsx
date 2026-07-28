@@ -140,6 +140,7 @@ export function GameContentPanel() {
         </label>
       </form>
       {error && <p className="error">{error}</p>}
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -164,6 +165,7 @@ export function GameContentPanel() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

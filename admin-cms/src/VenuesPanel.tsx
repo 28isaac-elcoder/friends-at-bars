@@ -209,6 +209,7 @@ export function VenuesPanel({
         </label>
       </form>
       {error && <p className="error">{error}</p>}
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -247,6 +248,7 @@ export function VenuesPanel({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

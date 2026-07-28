@@ -95,19 +95,20 @@ export default function App() {
       <div className="tabs">
         {(
           [
-            ["venues", "Venues"],
-            ["listings", "Deals / Events"],
-            ["games", "Game content"],
-            ["map", "Map"],
+            ["venues", "Venues", "Venues"],
+            ["listings", "Deals / Events", "Deals"],
+            ["games", "Game content", "Games"],
+            ["map", "Map", "Map"],
           ] as const
-        ).map(([id, label]) => (
+        ).map(([id, label, shortLabel]) => (
           <button
             key={id}
             type="button"
             className={tab === id ? "active" : ""}
             onClick={() => setTab(id)}
           >
-            {label}
+            <span className="tab-label-full">{label}</span>
+            <span className="tab-label-short">{shortLabel}</span>
           </button>
         ))}
       </div>

@@ -273,3 +273,183 @@ select {
   font-size: 0.7rem;
   border-radius: 6px;
 }
+
+/* Shared helpers */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.inline-check {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.tab-label-short,
+.btn-label-short,
+.listings-help-mobile {
+  display: none;
+}
+
+.col-time {
+  min-width: 4.5rem;
+}
+
+.col-details {
+  min-width: 10rem;
+  width: 100%;
+}
+
+.col-pri {
+  width: 3.5rem;
+}
+
+.listings-toolbar {
+  margin-bottom: 0.75rem;
+  align-items: center;
+}
+
+.listings-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.listing-card {
+  border: 1px solid #ddd6cb;
+  border-radius: 10px;
+  padding: 0.85rem;
+  background: #faf9f7;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.listing-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.listing-card input,
+.listing-card select,
+.listing-card textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.listing-card-fieldset {
+  border: 1px solid #e4ddd2;
+  border-radius: 8px;
+  margin: 0;
+  padding: 0.45rem 0.55rem 0.55rem;
+}
+
+.listing-card-fieldset legend {
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+}
+
+.listing-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.listing-card-meta label:first-child {
+  flex: 1 1 6rem;
+  min-width: 5rem;
+}
+
+.listing-card-active {
+  margin-bottom: 0.35rem;
+}
+
+/* Mobile / narrow screens */
+@media (max-width: 720px) {
+  .app-shell,
+  .app-shell.wide {
+    max-width: 100%;
+    padding: 0.75rem;
+  }
+
+  header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+  }
+
+  .tabs button {
+    flex: 1 1 auto;
+    min-width: calc(50% - 0.35rem);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .tab-label-full,
+  .btn-label-full,
+  .listings-help-desktop {
+    display: none;
+  }
+
+  .tab-label-short,
+  .btn-label-short,
+  .listings-help-mobile {
+    display: inline;
+  }
+
+  .panel {
+    padding: 0.75rem;
+  }
+
+  form.grid {
+    grid-template-columns: 1fr;
+  }
+
+  .listings-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .listings-toolbar label,
+  .listings-toolbar select,
+  .listings-toolbar button {
+    width: 100%;
+  }
+
+  .listings-table-wrap {
+    display: none;
+  }
+
+  .listings-cards {
+    display: flex;
+  }
+
+  .map-toolbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .app-shell.map-mode header,
+  .app-shell.map-mode .tabs {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .login {
+    margin: 1.5rem auto;
+    max-width: calc(100% - 1.5rem);
+  }
+}

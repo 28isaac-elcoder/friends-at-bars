@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CatalogListing, CatalogVenue, supabase } from "./supabase";
-import webListings from "./weeklyListings.bundle.json";
 
 const AREAS = [
   "North Campus",
@@ -38,6 +37,163 @@ function kindFromLabels(labels: string[]): Draft["listing_kind"] {
   return "deal";
 }
 
+function toggleDay(days: number[], day: number): number[] {
+  return days.includes(day)
+    ? days.filter((d) => d !== day)
+    : [...days, day].sort((a, b) => a - b);
+}
+
+function toggleType(labels: string[], label: string): string[] {
+  return labels.includes(label)
+    ? labels.filter((l) => l !== label)
+    : [...labels, label];
+}
+
+type PatchFn = (id: string, patch: Partial<Draft>) => void;
+
+/** Stacked editable card — primary mobile editing surface for Deals/Events. */
+function ListingCard({
+  row,
+  venues,
+  onPatch,
+  onRemove,
+}: {
+  row: CatalogListing;
+  venues: CatalogVenue[];
+  onPatch: PatchFn;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <li className="listing-card">
+      <label>
+        Venue
+        <select
+          value={row.venue_name}
+          onChange={(e) => onPatch(row.id, { venue_name: e.target.value })}
+        >
+          {venues.map((v) => (
+            <option key={v.id} value={v.name}>
+              {v.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Title
+        <input
+          defaultValue={row.title}
+          onBlur={(e) => {
+            if (e.target.value !== row.title)
+              onPatch(row.id, { title: e.target.value });
+          }}
+        />
+      </label>
+      <label>
+        Time
+        <input
+          defaultValue={row.time_label}
+          onBlur={(e) => {
+            if (e.target.value !== row.time_label)
+              onPatch(row.id, { time_label: e.target.value });
+          }}
+        />
+      </label>
+      <label>
+        Details
+        <textarea
+          defaultValue={row.details}
+          rows={3}
+          onBlur={(e) => {
+            if (e.target.value !== row.details)
+              onPatch(row.id, { details: e.target.value });
+          }}
+        />
+      </label>
+      <label>
+        Area
+        <select
+          value={row.area}
+          onChange={(e) => onPatch(row.id, { area: e.target.value })}
+        >
+          {AREAS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset className="listing-card-fieldset">
+        <legend>Types</legend>
+        <div className="row-actions">
+          {TYPE_OPTIONS.map((t) => (
+            <label key={t} className="inline-check">
+              <input
+                type="checkbox"
+                checked={row.type_labels.includes(t)}
+                onChange={() => {
+                  const next = toggleType(row.type_labels, t);
+                  onPatch(row.id, {
+                    type_labels: next,
+                    listing_kind: kindFromLabels(next),
+                  });
+                }}
+              />
+              {t}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="listing-card-fieldset">
+        <legend>Days</legend>
+        <div className="row-actions">
+          {DAY_LABELS.map((label, day) => (
+            <label key={label} className="inline-check">
+              <input
+                type="checkbox"
+                checked={row.days_of_week.includes(day)}
+                onChange={() =>
+                  onPatch(row.id, {
+                    days_of_week: toggleDay(row.days_of_week, day),
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="listing-card-meta">
+        <label>
+          Priority
+          <input
+            type="number"
+            defaultValue={row.priority}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (n !== row.priority) onPatch(row.id, { priority: n });
+            }}
+          />
+        </label>
+        <label className="inline-check listing-card-active">
+          <input
+            type="checkbox"
+            checked={row.is_active}
+            onChange={(e) => onPatch(row.id, { is_active: e.target.checked })}
+          />
+          Active
+        </label>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => onRemove(row.id)}
+        >
+          Delete
+        </button>
+      </div>
+    </li>
+  );
+}
+
 export function ListingsPanel() {
   const [rows, setRows] = useState<CatalogListing[]>([]);
   const [venues, setVenues] = useState<CatalogVenue[]>([]);
@@ -67,9 +223,7 @@ export function ListingsPanel() {
     if (!venuesRes.error) {
       const v = (venuesRes.data ?? []) as CatalogVenue[];
       setVenues(v);
-      setDraft((d) =>
-        d.venue_name ? d : blank(v[0]?.name ?? "")
-      );
+      setDraft((d) => (d.venue_name ? d : blank(v[0]?.name ?? "")));
     }
   }, []);
 
@@ -81,38 +235,6 @@ export function ListingsPanel() {
     if (!filterArea) return rows;
     return rows.filter((r) => r.area === filterArea);
   }, [rows, filterArea]);
-
-  async function importWebListings() {
-    if (
-      !confirm(
-        `Replace all listings with the ${webListings.length} web deals/events bundle? This deletes existing catalog_listings rows.`
-      )
-    ) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setMsg(null);
-    const { error: delErr } = await supabase
-      .from("catalog_listings")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (delErr) {
-      setBusy(false);
-      setError(delErr.message);
-      return;
-    }
-    const { error: insErr } = await supabase
-      .from("catalog_listings")
-      .insert(webListings as Omit<CatalogListing, "id">[]);
-    setBusy(false);
-    if (insErr) {
-      setError(insErr.message);
-      return;
-    }
-    setMsg(`Imported ${webListings.length} web listings`);
-    await load();
-  }
 
   async function createRow(e: React.FormEvent) {
     e.preventDefault();
@@ -154,27 +276,18 @@ export function ListingsPanel() {
     else await load();
   }
 
-  function toggleDay(days: number[], day: number): number[] {
-    return days.includes(day)
-      ? days.filter((d) => d !== day)
-      : [...days, day].sort((a, b) => a - b);
-  }
-
-  function toggleType(labels: string[], label: string): string[] {
-    return labels.includes(label)
-      ? labels.filter((l) => l !== label)
-      : [...labels, label];
-  }
-
   return (
-    <div>
-      <h2>Deals &amp; Events (spreadsheet)</h2>
-      <p className="muted">
-        Columns mirror the web deals sheet: venue, title, time, details, area,
-        types, days (0=Sun…6=Sat), priority, active.
+    <div className="listings-panel">
+      <h2>Deals &amp; Events</h2>
+      <p className="muted listings-help-desktop">
+        Spreadsheet columns: venue, title, time, details, area, types, days
+        (0=Sun…6=Sat), priority, active.
+      </p>
+      <p className="muted listings-help-mobile">
+        Edit each deal as a card. Filter by area, then tap fields to update.
       </p>
 
-      <div className="row-actions" style={{ marginBottom: "0.75rem" }}>
+      <div className="listings-toolbar row-actions">
         <label>
           Filter area{" "}
           <select
@@ -190,13 +303,6 @@ export function ListingsPanel() {
           </select>
         </label>
         <span className="muted">{visible.length} rows</span>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void importWebListings()}
-        >
-          Import web listings ({webListings.length})
-        </button>
       </div>
 
       <form className="grid" onSubmit={createRow}>
@@ -269,7 +375,7 @@ export function ListingsPanel() {
           Types
           <div className="row-actions">
             {TYPE_OPTIONS.map((t) => (
-              <label key={t} style={{ flexDirection: "row", gap: "0.35rem" }}>
+              <label key={t} className="inline-check">
                 <input
                   type="checkbox"
                   checked={draft.type_labels.includes(t)}
@@ -289,7 +395,7 @@ export function ListingsPanel() {
           Days
           <div className="row-actions">
             {DAY_LABELS.map((label, day) => (
-              <label key={label} style={{ flexDirection: "row", gap: "0.25rem" }}>
+              <label key={label} className="inline-check">
                 <input
                   type="checkbox"
                   checked={draft.days_of_week.includes(day)}
@@ -315,7 +421,8 @@ export function ListingsPanel() {
       {error && <p className="error">{error}</p>}
       {msg && <p className="muted">{msg}</p>}
 
-      <div style={{ overflowX: "auto" }}>
+      {/* Desktop spreadsheet */}
+      <div className="listings-table-wrap table-scroll">
         <table>
           <thead>
             <tr>
@@ -360,7 +467,7 @@ export function ListingsPanel() {
                 <td>
                   <input
                     defaultValue={r.time_label}
-                    style={{ minWidth: "5.5rem" }}
+                    className="col-time"
                     onBlur={(e) => {
                       if (e.target.value !== r.time_label)
                         void patchRow(r.id, { time_label: e.target.value });
@@ -371,7 +478,7 @@ export function ListingsPanel() {
                   <textarea
                     defaultValue={r.details}
                     rows={2}
-                    style={{ minWidth: "14rem" }}
+                    className="col-details"
                     onBlur={(e) => {
                       if (e.target.value !== r.details)
                         void patchRow(r.id, { details: e.target.value });
@@ -395,7 +502,11 @@ export function ListingsPanel() {
                 <td>
                   <div className="row-actions">
                     {TYPE_OPTIONS.map((t) => (
-                      <label key={t} style={{ flexDirection: "row", fontSize: "0.75rem" }}>
+                      <label
+                        key={t}
+                        className="inline-check"
+                        style={{ fontSize: "0.75rem" }}
+                      >
                         <input
                           type="checkbox"
                           checked={r.type_labels.includes(t)}
@@ -415,7 +526,11 @@ export function ListingsPanel() {
                 <td>
                   <div className="row-actions">
                     {DAY_LABELS.map((label, day) => (
-                      <label key={label} style={{ flexDirection: "row", fontSize: "0.7rem" }}>
+                      <label
+                        key={label}
+                        className="inline-check"
+                        style={{ fontSize: "0.7rem" }}
+                      >
                         <input
                           type="checkbox"
                           checked={r.days_of_week.includes(day)}
@@ -434,10 +549,11 @@ export function ListingsPanel() {
                   <input
                     type="number"
                     defaultValue={r.priority}
-                    style={{ width: "3.5rem" }}
+                    className="col-pri"
                     onBlur={(e) => {
                       const n = Number(e.target.value);
-                      if (n !== r.priority) void patchRow(r.id, { priority: n });
+                      if (n !== r.priority)
+                        void patchRow(r.id, { priority: n });
                     }}
                   />
                 </td>
@@ -464,6 +580,23 @@ export function ListingsPanel() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile stacked cards */}
+      <ul className="listings-cards">
+        {visible.length === 0 ? (
+          <li className="muted">No listings for this filter.</li>
+        ) : (
+          visible.map((r) => (
+            <ListingCard
+              key={r.id}
+              row={r}
+              venues={venues}
+              onPatch={(id, patch) => void patchRow(id, patch)}
+              onRemove={(id) => void removeRow(id)}
+            />
+          ))
+        )}
+      </ul>
     </div>
   );
 }
