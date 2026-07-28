@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 enum CampusArea: String, CaseIterable, Identifiable, Hashable {
     case northCampus = "North Campus"
@@ -7,6 +7,30 @@ enum CampusArea: String, CaseIterable, Identifiable, Hashable {
     case grandview = "Grandview / Breweries"
 
     var id: String { rawValue }
+
+    /// Compact chip label.
+    var shortLabel: String {
+        switch self {
+        case .northCampus: return "North Campus"
+        case .southCampus: return "South Campus"
+        case .shortNorth: return "Short North"
+        case .grandview: return "Grand-Brew"
+        }
+    }
+
+    /// Vibrant accent used for area chips and bar/deal area subtitles.
+    var accentColor: Color {
+        switch self {
+        case .southCampus: return Color(red: 0.92, green: 0.22, blue: 0.28)
+        case .northCampus: return Color(red: 0.22, green: 0.48, blue: 0.98)
+        case .shortNorth: return Color(red: 0.18, green: 0.78, blue: 0.38)
+        case .grandview: return Color(red: 0.72, green: 0.32, blue: 0.95)
+        }
+    }
+
+    static func matching(areaRaw: String) -> CampusArea? {
+        allCases.first { $0.rawValue == areaRaw }
+    }
 }
 
 enum PopulationSort: String, CaseIterable, Identifiable {
@@ -14,6 +38,10 @@ enum PopulationSort: String, CaseIterable, Identifiable {
     case leastPopulated = "Least Populated"
 
     var id: String { rawValue }
+
+    mutating func toggle() {
+        self = self == .mostPopulated ? .leastPopulated : .mostPopulated
+    }
 }
 
 enum DayFilter: Int, CaseIterable, Identifiable {

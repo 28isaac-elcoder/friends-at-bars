@@ -130,22 +130,19 @@ struct SwitchSearchView: View {
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 52, alignment: .leading)
 
-                HStack(alignment: .center, spacing: 10) {
+                // Whole-word chips wrap to new rows; letters within a word never split.
+                SwitchSearchHintFlow(spacing: 8) {
                     ForEach(Array(engine.hints.enumerated()), id: \.offset) { idx, hint in
                         let word = idx < engine.currentWords.count
                             ? engine.currentWords[idx].lowercased()
                             : ""
                         let isFound = engine.foundWords.contains(word)
-                        // Zero-width spaces let long hard-mode patterns wrap between glyphs
-                        // instead of truncating with "…".
-                        Text(Self.wrapFriendlyHint(hint))
-                            .font(.system(size: 26, weight: .bold, design: .rounded).monospaced())
-                            .multilineTextAlignment(.center)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Text(hint)
+                            .font(.system(size: 22, weight: .bold, design: .rounded).monospaced())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity)
                             .background(isFound ? Color.white : Color.white.opacity(0.12))
                             .foregroundStyle(isFound ? Color.black : Color.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -163,11 +160,6 @@ struct SwitchSearchView: View {
             .padding(.bottom, 8)
         }
         .padding(.top, 4)
-    }
-
-    /// Insert zero-width spaces so monospaced hint strings can wrap mid-pattern.
-    private static func wrapFriendlyHint(_ hint: String) -> String {
-        hint.map(String.init).joined(separator: "\u{200B}")
     }
 
     private var letterGrid: some View {
@@ -307,5 +299,70 @@ private struct SwitchSearchLetterCell: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(border, lineWidth: 1)
             )
+    }
+}
+
+/// Wraps whole chips onto new rows; never splits text inside a chip.
+private struct SwitchSearchHintFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        arrange(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let result = arrange(proposal: proposal, subviews: subviews)
+        for index in subviews.indices {
+            let place = result.places[index]
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + place.origin.x, y: bounds.minY + place.origin.y),
+                proposal: ProposedViewSize(width: place.size.width, height: place.size.height)
+            )
+        }
+    }
+
+    private func arrange(
+        proposal: ProposedViewSize,
+        subviews: Subviews
+    ) -> (size: CGSize, places: [CGRect]) {
+        let maxWidth = proposal.width ?? .infinity
+        var places: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            let unrestricted = subview.sizeThatFits(.unspecified)
+            let chipWidth = min(unrestricted.width, maxWidth)
+            let chipHeight = subview
+                .sizeThatFits(ProposedViewSize(width: chipWidth, height: nil))
+                .height
+
+            if x > 0, x + chipWidth > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+
+            places.append(CGRect(x: x, y: y, width: chipWidth, height: chipHeight))
+            rowHeight = max(rowHeight, chipHeight)
+            x += chipWidth + spacing
+            usedWidth = max(usedWidth, x - spacing)
+        }
+
+        return (
+            CGSize(width: usedWidth.isFinite ? usedWidth : 0, height: y + rowHeight),
+            places
+        )
     }
 }

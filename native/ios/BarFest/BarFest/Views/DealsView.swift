@@ -3,9 +3,7 @@ import SwiftUI
 struct DealsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var dayFilter: DayFilter = .today
-    @State private var areaFilter: CampusArea? = nil
-    /// When true, show all areas (alongside day filter). Distinct from nil area clearing.
-    @State private var showAllAreas = true
+    @State private var areaFilter: CampusArea?
 
     private var filteredListings: [CatalogListing] {
         appModel.listings
@@ -16,7 +14,7 @@ struct DealsView: View {
                         return false
                     }
                 }
-                if !showAllAreas, let areaFilter {
+                if let areaFilter {
                     if listing.area != areaFilter.rawValue {
                         return false
                     }
@@ -33,7 +31,6 @@ struct DealsView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
-                    // Day-of-week dropdown (red box region)
                     Menu {
                         ForEach(DayFilter.allCases) { day in
                             Button {
@@ -56,23 +53,17 @@ struct DealsView: View {
                         .foregroundStyle(.primary)
                     }
 
-                    Text("Weekly specials and events. Use day and area filters above. Showing \(filteredListings.count) of \(appModel.listings.count).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    // Area filters — horizontal-only (no vertical rubber-band)
                     HorizontalChipScroll {
-                        areaChip(title: "All", selected: showAllAreas) {
-                            showAllAreas = true
-                            areaFilter = nil
-                        }
                         ForEach(CampusArea.allCases) { area in
-                            areaChip(
-                                title: shortArea(area),
-                                selected: !showAllAreas && areaFilter == area
+                            AreaFilterChip(
+                                area: area,
+                                selected: areaFilter == area
                             ) {
-                                showAllAreas = false
-                                areaFilter = area
+                                if areaFilter == area {
+                                    areaFilter = nil
+                                } else {
+                                    areaFilter = area
+                                }
                             }
                         }
                     }
@@ -97,7 +88,10 @@ struct DealsView: View {
                                 if !item.area.isEmpty {
                                     Text(item.area)
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(
+                                            CampusArea.matching(areaRaw: item.area)?.accentColor
+                                                ?? Color.secondary
+                                        )
                                 }
                             }
                             if !item.title.isEmpty {
@@ -142,7 +136,6 @@ struct DealsView: View {
             }
             .onChange(of: dayFilter) { _, _ in logDealsDiagnostics(event: "day-filter") }
             .onChange(of: areaFilter) { _, _ in logDealsDiagnostics(event: "area-filter") }
-            .onChange(of: showAllAreas) { _, _ in logDealsDiagnostics(event: "all-areas-toggle") }
         }
     }
 
@@ -153,7 +146,7 @@ struct DealsView: View {
             category: "system",
             message: """
             Deals[\(event)] total=\(appModel.listings.count) visible=\(filteredListings.count) \
-            day=\(dayFilter.label) area=\(showAllAreas ? "All" : (areaFilter?.rawValue ?? "none"))
+            day=\(dayFilter.label) area=\(areaFilter?.rawValue ?? "All")
             """
         )
         if !areaSummary.isEmpty {
@@ -167,28 +160,6 @@ struct DealsView: View {
                 category: "system",
                 message: "Deals: Supabase returned only \(appModel.listings.count) listings — UI cannot show more until DB is re-seeded"
             )
-        }
-    }
-
-    private func areaChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(selected ? Color.accentColor.opacity(0.35) : Color.white.opacity(0.1))
-                .foregroundStyle(selected ? Color.accentColor : .primary)
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func shortArea(_ area: CampusArea) -> String {
-        switch area {
-        case .northCampus: return "North Campus"
-        case .southCampus: return "South Campus"
-        case .shortNorth: return "Short North"
-        case .grandview: return "Grandview"
         }
     }
 

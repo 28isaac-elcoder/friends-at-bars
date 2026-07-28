@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Priority deals carousel (web Activities `BarDealsCarousel` parity) — dark theme.
+/// Auto-cycles every few seconds; supports left/right swipe; resumes auto-cycle after swiping.
 struct PriorityDealsCarousel: View {
     let items: [CatalogListing]
     @State private var index = 0
     @State private var detailItem: CatalogListing?
+    @State private var cycleToken = UUID()
     private let rotateSeconds: TimeInterval = 3
 
     private static let fullDayNames = [
@@ -88,9 +90,13 @@ struct PriorityDealsCarousel: View {
         .onTapGesture {
             detailItem = current
         }
+        .simultaneousGesture(swipeGesture)
         .onAppear { index = 0 }
-        .onChange(of: items.map(\.id)) { _, _ in index = 0 }
-        .task(id: items.count) {
+        .onChange(of: items.map(\.id)) { _, _ in
+            index = 0
+            cycleToken = UUID()
+        }
+        .task(id: "\(items.count)-\(cycleToken.uuidString)") {
             guard items.count > 1 else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(rotateSeconds * 1_000_000_000))
@@ -102,6 +108,26 @@ struct PriorityDealsCarousel: View {
                 }
             }
         }
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                guard items.count > 1 else { return }
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Prefer horizontal swipes so vertical ScrollView still works.
+                guard abs(dx) > abs(dy), abs(dx) > 40 else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    if dx < 0 {
+                        index = (index + 1) % items.count
+                    } else {
+                        index = (index - 1 + items.count) % items.count
+                    }
+                }
+                // Restart auto-cycle from a fresh interval after manual swipe.
+                cycleToken = UUID()
+            }
     }
 
     private func carouselLabel(for labels: [String]) -> String {
@@ -172,7 +198,7 @@ private struct PriorityDealDetailSheet: View {
                     if !item.area.isEmpty {
                         Text(item.area)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(CampusArea.matching(areaRaw: item.area)?.accentColor ?? .secondary)
                     }
 
                     if !item.time_label.isEmpty || !item.days_of_week.isEmpty {

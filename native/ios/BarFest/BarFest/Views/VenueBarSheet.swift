@@ -23,7 +23,9 @@ struct VenueBarSheet: View {
                     if !venue.area.isEmpty {
                         Text(venue.area)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(
+                                CampusArea.matching(areaRaw: venue.area)?.accentColor ?? .secondary
+                            )
                     }
                 }
 

@@ -72,76 +72,43 @@ struct ActivitiesView: View {
 
                     PriorityDealsCarousel(items: priorityDeals)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Menu {
-                                ForEach(PopulationSort.allCases) { sort in
-                                    Button {
-                                        populationSort = sort
-                                    } label: {
-                                        HStack {
-                                            Text(sort.rawValue)
-                                            if populationSort == sort {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
+                    if showBarAttendance {
+                        HorizontalChipScroll {
+                            ForEach(CampusArea.allCases) { area in
+                                AreaFilterChip(
+                                    area: area,
+                                    selected: areaFilter == area
+                                ) {
+                                    if areaFilter == area {
+                                        areaFilter = nil
+                                        populationSort = .mostPopulated
+                                    } else {
+                                        areaFilter = area
+                                        populationSort = .mostPopulated
                                     }
-                                }
-                            } label: {
-                                Label(populationSort.rawValue, systemImage: "arrow.up.arrow.down")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 7)
-                                    .background(Color.white.opacity(0.1))
-                                    .clipShape(Capsule())
-                            }
-                            .disabled(!showBarAttendance)
-
-                            if areaFilter != nil {
-                                Button {
-                                    areaFilter = nil
-                                    populationSort = .mostPopulated
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .accessibilityLabel("Clear area filter")
-                            }
-                        }
-
-                        if showBarAttendance {
-                            HorizontalChipScroll {
-                                ForEach(CampusArea.allCases) { area in
-                                    Button {
-                                        if areaFilter == area {
-                                            areaFilter = nil
-                                            populationSort = .mostPopulated
-                                        } else {
-                                            areaFilter = area
-                                            populationSort = .mostPopulated
-                                        }
-                                    } label: {
-                                        Text(shortAreaLabel(area))
-                                            .font(.caption.weight(.semibold))
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 7)
-                                            .background(
-                                                areaFilter == area
-                                                    ? Color.accentColor.opacity(0.35)
-                                                    : Color.white.opacity(0.1)
-                                            )
-                                            .foregroundStyle(areaFilter == area ? Color.accentColor : .primary)
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
                     }
 
-                    Text(areaFilter == nil ? "Bars" : areaFilter!.rawValue)
-                        .font(.headline)
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(areaFilter == nil ? "Bars" : areaFilter!.rawValue)
+                            .font(.headline)
+                        Spacer(minLength: 8)
+                        Button {
+                            populationSort.toggle()
+                        } label: {
+                            Label(populationSort.rawValue, systemImage: "arrow.up.arrow.down")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(Color.white.opacity(0.1))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!showBarAttendance)
+                        .accessibilityLabel("Toggle population sort")
+                    }
 
                     if showBarAttendance {
                         LazyVStack(spacing: 0) {
@@ -156,7 +123,10 @@ struct ActivitiesView: View {
                                                 .foregroundStyle(.primary)
                                             Text(venue.area)
                                                 .font(.caption2)
-                                                .foregroundStyle(.secondary)
+                                                .foregroundStyle(
+                                                    CampusArea.matching(areaRaw: venue.area)?.accentColor
+                                                        ?? Color.secondary
+                                                )
                                         }
                                         Spacer()
                                         Text("\(appModel.venueCounts[venue.name, default: 0])")
@@ -204,7 +174,7 @@ struct ActivitiesView: View {
                 .padding()
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Activities")
+            .toolbar(.hidden, for: .navigationBar)
             .refreshable { await reload(fromPullToRefresh: true) }
             .task { await reload() }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
@@ -233,15 +203,6 @@ struct ActivitiesView: View {
                 if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
                 return lhs.title < rhs.title
             }
-    }
-
-    private func shortAreaLabel(_ area: CampusArea) -> String {
-        switch area {
-        case .northCampus: return "North Campus"
-        case .southCampus: return "South Campus"
-        case .shortNorth: return "Short North"
-        case .grandview: return "Grandview"
-        }
     }
 
     private func reload(fromPullToRefresh: Bool = false) async {
