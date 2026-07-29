@@ -123,10 +123,7 @@ struct ActivitiesView: View {
                                                 .foregroundStyle(.primary)
                                             Text(venue.area)
                                                 .font(.caption2)
-                                                .foregroundStyle(
-                                                    CampusArea.matching(areaRaw: venue.area)?.accentColor
-                                                        ?? Color.secondary
-                                                )
+                                                .foregroundStyle(.secondary)
                                         }
                                         Spacer()
                                         Text("\(appModel.venueCounts[venue.name, default: 0])")

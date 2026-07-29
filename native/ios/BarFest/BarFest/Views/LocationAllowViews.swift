@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Shared privacy footnote under Allow Location CTAs.
+enum LocationPrivacyCopy {
+    static let underButton =
+        "Only used to count you in — never sold, never shown to anyone."
+}
+
 /// Amber strip matching web Activities “Click Here to Enable Location…”.
 struct LocationAllowStrip: View {
     @ObservedObject private var auth = LocationAuthorizationStore.shared
@@ -31,6 +37,12 @@ struct LocationAllowStrip: View {
                 .buttonStyle(.plain)
                 .disabled(busy)
 
+                Text(LocationPrivacyCopy.underButton)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
                 if let msg = auth.lastPromptMessage {
                     Text(msg)
                         .font(.caption2.monospaced())
@@ -41,12 +53,9 @@ struct LocationAllowStrip: View {
     }
 }
 
-/// Full-screen style prompt for Map (web MapLocationPermissionPrompt parity).
+/// Full-screen style prompt for Map.
 struct LocationAllowOverlay: View {
     @ObservedObject private var auth = LocationAuthorizationStore.shared
-    var title: String = "Allow Location Always"
-    var description: String =
-        "Bar Fest needs Location Always so live attendance can update while you're out. Enable Always to browse how busy bars are and chat from a venue."
     @State private var busy = false
 
     var body: some View {
@@ -56,13 +65,25 @@ struct LocationAllowOverlay: View {
                 VStack(spacing: 16) {
                     Image(systemName: "mappin.and.ellipse")
                         .font(.system(size: 40))
-                    Text(title)
+
+                    Text("See where the night is happening.")
                         .font(.title2.bold())
-                    Text(description)
-                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+
+                    Text(
+                        "Location Always lets Bar Fest update the map in real time, so you always know which bars are lighting up."
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                    Text("Your location stays private — always.")
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
+
                     Button {
                         busy = true
                         auth.requestAllowLocation()
@@ -70,16 +91,26 @@ struct LocationAllowOverlay: View {
                             busy = false
                         }
                     } label: {
-                        Text(busy ? "Opening…" : "Allow Location Always")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        Text(
+                            busy
+                                ? "Opening…"
+                                : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Light Up the Map")
+                        )
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.accentColor)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .padding(.horizontal, 24)
                     .disabled(busy)
+
+                    Text(LocationPrivacyCopy.underButton)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
 
                     if auth.needsAlwaysUpgrade {
                         Text("You chose While Using — switch to Always in Settings for live counts.")
@@ -119,25 +150,36 @@ struct HorizontalChipScroll<Content: View>: View {
     }
 }
 
-/// Inline Activities gate — replaces bar list when location is off (reference app style).
+/// Inline Activity gate — replaces bar list when location is off.
 struct ActivitiesLocationInlineGate: View {
     @ObservedObject private var auth = LocationAuthorizationStore.shared
     @State private var busy = false
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Image(systemName: "map.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(.white.opacity(0.9))
                 .symbolRenderingMode(.hierarchical)
 
+            Text("Who Wants to Guess Which Bars are Popular")
+                .font(.title3.bold())
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+
             Text(
-                "Location Always is required. To find bars nearby and see how busy they are, enable Location → Always in Settings. It will never be shared."
+                "Turn on Location Always to see real headcounts at bars near you — and add yourself to the count."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
+
+            Text("Your location is never shared or shown to other users.")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
 
             if auth.needsAlwaysUpgrade {
                 Text("Currently set to While Using — change it to Always to unlock live attendance.")
@@ -154,17 +196,27 @@ struct ActivitiesLocationInlineGate: View {
                     busy = false
                 }
             } label: {
-                Text(busy ? "Opening…" : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Open Settings"))
-                    .font(.headline)
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Text(
+                    busy
+                        ? "Opening…"
+                        : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Show Me What's Busy")
+                )
+                .font(.headline)
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(busy)
             .padding(.horizontal, 24)
+
+            Text(LocationPrivacyCopy.underButton)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
 
             if let msg = auth.lastPromptMessage {
                 Text(msg)

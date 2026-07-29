@@ -144,7 +144,7 @@ struct MapScreen: View {
                 Button {
                     testMode.simulateLocationAllowed = true
                 } label: {
-                    Text("Enable simulated location")
+                    Text("Light Up the Map")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -153,6 +153,12 @@ struct MapScreen: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .padding(.horizontal, 24)
+
+                Text(LocationPrivacyCopy.underButton)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
             .padding()
         }

@@ -16,7 +16,12 @@ enum ChatService {
         return try await SupabaseClient.shared.get(path: "rest/v1/chat_posts", query: query)
     }
 
-    static func createPost(body: String, venueName: String) async throws {
+    static func createPost(
+        body: String,
+        venueName: String,
+        avatarIcon: String,
+        avatarColor: String
+    ) async throws {
         let uid = String(AnonymousIdentity.userId().prefix(12))
         DiagnosticLog.log(
             category: "location",
@@ -27,6 +32,8 @@ enum ChatService {
                 "p_author_id": AnonymousIdentity.userId(),
                 "p_body": body,
                 "p_venue_name": venueName,
+                "p_avatar_icon": avatarIcon,
+                "p_avatar_color": avatarColor,
             ])
             DiagnosticLog.log(
                 category: "location",

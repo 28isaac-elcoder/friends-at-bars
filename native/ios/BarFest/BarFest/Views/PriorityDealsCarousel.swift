@@ -198,7 +198,7 @@ private struct PriorityDealDetailSheet: View {
                     if !item.area.isEmpty {
                         Text(item.area)
                             .font(.subheadline)
-                            .foregroundStyle(CampusArea.matching(areaRaw: item.area)?.accentColor ?? .secondary)
+                            .foregroundStyle(.secondary)
                     }
 
                     if !item.time_label.isEmpty || !item.days_of_week.isEmpty {

@@ -37,6 +37,9 @@ struct ChatPost: Codable, Identifiable, Hashable {
     let created_at: String
     let expires_at: String
     var my_vote: Int?
+    /// Snapshot of the author's avatar at send time (stable even if they change later).
+    var avatar_icon: String?
+    var avatar_color: String?
 }
 
 struct CheckInRow: Codable, Hashable, Identifiable {

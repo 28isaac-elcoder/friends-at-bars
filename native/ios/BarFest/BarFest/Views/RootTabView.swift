@@ -10,7 +10,7 @@ private enum AppTab: Hashable {
 
     var title: String {
         switch self {
-        case .activities: return "Activities"
+        case .activities: return "Activity"
         case .deals: return "Deals"
         case .chat: return "Chat"
         case .map: return "Map"
@@ -47,23 +47,18 @@ struct RootTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             TestModeChrome()
-            TabView(selection: $selectedTab) {
-                ActivitiesView()
-                    .tag(AppTab.activities)
-                DealsView()
-                    .tag(AppTab.deals)
-                ChatView()
-                    .tag(AppTab.chat)
-                MapScreen()
-                    .tag(AppTab.map)
+            // Custom tabs only — no system TabView/UITabBar (avoids iOS liquid-glass remnant).
+            ZStack {
+                tabPage(.activities) { ActivitiesView() }
+                tabPage(.deals) { DealsView() }
+                tabPage(.chat) { ChatView() }
+                tabPage(.map) { MapScreen() }
                 if testMode.uiEnabled {
-                    GamesHubView()
-                        .tag(AppTab.games)
-                    LogView()
-                        .tag(AppTab.log)
+                    tabPage(.games) { GamesHubView() }
+                    tabPage(.log) { LogView() }
                 }
             }
-            .toolbar(.hidden, for: .tabBar)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             customTabBar
         }
         .preferredColorScheme(.dark)
@@ -72,6 +67,18 @@ struct RootTabView: View {
                 selectedTab = .activities
             }
         }
+    }
+
+    @ViewBuilder
+    private func tabPage<Content: View>(
+        _ tab: AppTab,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .opacity(selectedTab == tab ? 1 : 0)
+            .allowsHitTesting(selectedTab == tab)
+            .accessibilityHidden(selectedTab != tab)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var customTabBar: some View {

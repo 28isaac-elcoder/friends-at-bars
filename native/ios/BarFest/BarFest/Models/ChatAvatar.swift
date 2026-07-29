@@ -118,10 +118,38 @@ struct ChatAvatarSelection: Equatable, Codable {
     }
 }
 
+extension ChatPost {
+    /// Avatar frozen on this message at send time, if present.
+    var avatarSelection: ChatAvatarSelection? {
+        guard let iconRaw = avatar_icon,
+              let colorRaw = avatar_color,
+              let icon = ChatAvatarIcon(rawValue: iconRaw),
+              let color = ChatAvatarColor(rawValue: colorRaw)
+        else { return nil }
+        return ChatAvatarSelection(icon: icon, color: color)
+    }
+}
+
 enum ChatAvatarResolver {
+    /// Prefer the avatar frozen on the post; otherwise resolve from current preferences / hash.
+    static func selection(
+        for post: ChatPost,
+        preference: ChatAvatarSelection?,
+        otherPreference: ChatAvatarSelection? = nil
+    ) -> ChatAvatarSelection {
+        if let snapped = post.avatarSelection {
+            return snapped
+        }
+        return selection(
+            forAuthorId: post.author_id,
+            preference: preference,
+            otherPreference: otherPreference
+        )
+    }
+
     /// Own / other-user preference when matched; otherwise a stable hash so strangers stay consistent.
     static func selection(
-        for authorId: String,
+        forAuthorId authorId: String,
         preference: ChatAvatarSelection?,
         otherPreference: ChatAvatarSelection? = nil
     ) -> ChatAvatarSelection {

@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS chat_posts (
   score INTEGER NOT NULL DEFAULT 0,
   is_hidden BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours')
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+  avatar_icon TEXT,
+  avatar_color TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_posts_feed_recent
@@ -97,11 +99,17 @@ EXECUTE FUNCTION refresh_chat_post_score();
 -- Create post (rate limit + live_locations anti-spoof check)
 -- Requires an active live_locations row for author at venue_name,
 -- updated within the last 18 minutes (native heartbeat 15m + grace; matches AppConfig.liveLocationChatFreshnessSeconds).
+-- Avatar icon/color are snapshotted onto the row at send time.
 -- -----------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS create_chat_post(TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS create_chat_post(TEXT, TEXT, TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION create_chat_post(
   p_author_id TEXT,
   p_body TEXT,
-  p_venue_name TEXT
+  p_venue_name TEXT,
+  p_avatar_icon TEXT DEFAULT NULL,
+  p_avatar_color TEXT DEFAULT NULL
 )
 RETURNS chat_posts
 LANGUAGE plpgsql
@@ -154,8 +162,14 @@ BEGIN
     RAISE EXCEPTION 'Must be at a bar to chat';
   END IF;
 
-  INSERT INTO chat_posts (author_id, body, venue_name)
-  VALUES (p_author_id, trimmed, trim(p_venue_name))
+  INSERT INTO chat_posts (author_id, body, venue_name, avatar_icon, avatar_color)
+  VALUES (
+    p_author_id,
+    trimmed,
+    trim(p_venue_name),
+    NULLIF(trim(p_avatar_icon), ''),
+    NULLIF(trim(p_avatar_color), '')
+  )
   RETURNING * INTO new_row;
 
   RETURN new_row;
@@ -339,7 +353,7 @@ GRANT SELECT ON chat_posts TO anon, authenticated;
 GRANT SELECT ON chat_votes TO anon, authenticated;
 GRANT SELECT ON chat_reports TO anon, authenticated;
 
-GRANT EXECUTE ON FUNCTION create_chat_post(TEXT, TEXT, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION create_chat_post(TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION set_chat_vote(UUID, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION hide_own_chat_post(UUID, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION report_chat_post(UUID, TEXT, TEXT) TO anon, authenticated;

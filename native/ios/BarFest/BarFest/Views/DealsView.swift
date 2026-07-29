@@ -88,10 +88,7 @@ struct DealsView: View {
                                 if !item.area.isEmpty {
                                     Text(item.area)
                                         .font(.caption2)
-                                        .foregroundStyle(
-                                            CampusArea.matching(areaRaw: item.area)?.accentColor
-                                                ?? Color.secondary
-                                        )
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                             if !item.title.isEmpty {

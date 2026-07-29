@@ -37,7 +37,7 @@ final class TestChatStore: ObservableObject {
         return active.sorted { $0.created_at > $1.created_at }
     }
 
-    func createPost(body: String) throws {
+    func createPost(body: String, avatar: ChatAvatarSelection) throws {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ChatLocalError.message("Message cannot be empty") }
         guard trimmed.count <= AppConfig.maxChatChars else {
@@ -63,7 +63,9 @@ final class TestChatStore: ObservableObject {
             is_hidden: false,
             created_at: now,
             expires_at: expires,
-            my_vote: nil
+            my_vote: nil,
+            avatar_icon: avatar.icon.rawValue,
+            avatar_color: avatar.color.rawValue
         )
         posts.insert(post, at: 0)
         persist()

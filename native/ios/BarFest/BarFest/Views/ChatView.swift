@@ -214,7 +214,7 @@ struct ChatView: View {
     private func chatRow(_ post: ChatPost) -> some View {
         let isOwn = post.author_id == AnonymousIdentity.userId()
         let avatar = ChatAvatarResolver.selection(
-            for: post.author_id,
+            for: post,
             preference: avatarStore.selection,
             otherPreference: avatarStore.otherSelection
         )
@@ -330,27 +330,34 @@ struct ChatView: View {
             }
 
             if needLocationGate {
-                Button {
-                    if useLocal {
-                        testMode.simulateLocationAllowed = true
-                    } else {
-                        locationAuth.requestAllowLocation()
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        if useLocal {
+                            testMode.simulateLocationAllowed = true
+                        } else {
+                            locationAuth.requestAllowLocation()
+                        }
+                    } label: {
+                        Text(
+                            useLocal
+                                ? "Enable location to chat with others"
+                                : (locationAuth.needsAlwaysUpgrade
+                                   ? "Enable location to chat with others — upgrade to Always"
+                                   : "Enable location to chat with others")
+                        )
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                } label: {
-                    Text(
-                        useLocal
-                            ? "Allow Location to Chat — tap to enable (simulate)"
-                            : (locationAuth.needsAlwaysUpgrade
-                               ? "Allow Location Always to Chat — upgrade from While Using"
-                               : "Allow Location Always to Chat — tap to enable")
-                    )
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .buttonStyle(.plain)
+
+                    Text(LocationPrivacyCopy.underButton)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
                 }
-                .buttonStyle(.plain)
             } else if !useLocal && !atVenue {
                 Text("Must be at a Bar to Chat")
                     .font(.subheadline)
@@ -506,13 +513,22 @@ struct ChatView: View {
             return
         }
         do {
+            let avatar =
+                (useLocal && localChat.sender == .other)
+                ? avatarStore.otherSelection
+                : avatarStore.selection
             if useLocal {
-                try localChat.createPost(body: trimmed)
+                try localChat.createPost(body: trimmed, avatar: avatar)
                 draft = ""
                 composerFocused = false
                 DiagnosticLog.shared.append(category: "chat", message: "Local post at \(venue)")
             } else {
-                try await ChatService.createPost(body: trimmed, venueName: venue)
+                try await ChatService.createPost(
+                    body: trimmed,
+                    venueName: venue,
+                    avatarIcon: avatar.icon.rawValue,
+                    avatarColor: avatar.color.rawValue
+                )
                 draft = ""
                 composerFocused = false
                 DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venue)")

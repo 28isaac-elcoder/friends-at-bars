@@ -1,6 +1,4 @@
--- Align chat anti-spoof freshness with native live-location policy:
--- heartbeat 15 minutes, count/chat trust window 18 minutes.
--- Also persists avatar snapshot fields on each post.
+-- Snapshot chat avatars onto each post so icon/color stay fixed after the author changes them.
 -- Run in the Supabase SQL editor (safe to re-run).
 
 ALTER TABLE chat_posts
