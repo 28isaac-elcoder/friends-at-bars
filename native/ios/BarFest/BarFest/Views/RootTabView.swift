@@ -37,9 +37,9 @@ struct RootTabView: View {
     @State private var shakeTriggers: [AppTab: Int] = [:]
 
     private var visibleTabs: [AppTab] {
-        var tabs: [AppTab] = [.activities, .deals, .chat, .map]
+        var tabs: [AppTab] = [.activities, .deals, .chat, .map, .games]
         if testMode.uiEnabled {
-            tabs.append(contentsOf: [.games, .log])
+            tabs.append(.log)
         }
         return tabs
     }
@@ -53,8 +53,8 @@ struct RootTabView: View {
                 tabPage(.deals) { DealsView() }
                 tabPage(.chat) { ChatView() }
                 tabPage(.map) { MapScreen() }
+                tabPage(.games) { GamesHubView() }
                 if testMode.uiEnabled {
-                    tabPage(.games) { GamesHubView() }
                     tabPage(.log) { LogView() }
                 }
             }
@@ -63,7 +63,7 @@ struct RootTabView: View {
         }
         .preferredColorScheme(.dark)
         .onChange(of: testMode.uiEnabled) { _, enabled in
-            if !enabled, selectedTab == .games || selectedTab == .log {
+            if !enabled, selectedTab == .log {
                 selectedTab = .activities
             }
         }

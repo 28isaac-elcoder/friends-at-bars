@@ -8,7 +8,6 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
     static let shared = LocationAuthorizationStore()
 
     @Published private(set) var status: CLAuthorizationStatus
-    @Published var lastPromptMessage: String?
 
     private let manager = CLLocationManager()
 
@@ -33,7 +32,6 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
 
     /// Quiet start on app launch — request only if never asked; never open Settings here.
     func softStartTrackingIfPossible() {
-        lastPromptMessage = nil
         refresh()
         switch status {
         case .notDetermined:
@@ -70,20 +68,15 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
 
     /// User-tapped Allow Location (Activities strip, Map overlay, Chat gate).
     func requestAllowLocation(thenStartTracking: Bool = true) {
-        lastPromptMessage = nil
         refresh()
         switch status {
         case .notDetermined:
             manager.requestAlwaysAuthorization()
         case .denied, .restricted:
-            lastPromptMessage =
-                "Set Location to Always in Settings, then return to the app. Live bar counts need Always access."
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
         case .authorizedWhenInUse:
-            lastPromptMessage =
-                "Please choose Always Allow so live bar attendance can update in the background."
             manager.requestAlwaysAuthorization()
             DiagnosticLog.shared.append(
                 category: "location",

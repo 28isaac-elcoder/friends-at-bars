@@ -1,18 +1,12 @@
 import SwiftUI
 
 struct GamesHubView: View {
+    @ObservedObject private var testMode = TestModeStore.shared
     @State private var showSwitchSearch = false
 
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink("Ride the Bus") {
-                    RideTheBusView()
-                }
-                NavigationLink("Mega Toe") {
-                    Text("Mega Toe — placeholder board. Port full rules from React in a follow-up.")
-                        .padding()
-                }
                 Button {
                     showSwitchSearch = true
                 } label: {
@@ -20,6 +14,16 @@ struct GamesHubView: View {
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
+                }
+
+                if testMode.uiEnabled {
+                    NavigationLink("Ride the Bus") {
+                        RideTheBusView()
+                    }
+                    NavigationLink("Mega Toe") {
+                        Text("Mega Toe — placeholder board. Port full rules from React in a follow-up.")
+                            .padding()
+                    }
                 }
             }
             .navigationTitle("Games")

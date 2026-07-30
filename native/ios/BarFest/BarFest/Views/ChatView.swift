@@ -342,7 +342,7 @@ struct ChatView: View {
                             useLocal
                                 ? "Enable location to chat with others"
                                 : (locationAuth.needsAlwaysUpgrade
-                                   ? "Enable location to chat with others — upgrade to Always"
+                                   ? "Always allow location to chat with others"
                                    : "Enable location to chat with others")
                         )
                         .font(.subheadline)

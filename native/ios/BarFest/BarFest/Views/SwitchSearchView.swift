@@ -302,7 +302,7 @@ private struct SwitchSearchLetterCell: View {
     }
 }
 
-/// Wraps whole chips onto new rows; never splits text inside a chip.
+/// Wraps whole chips onto new rows (centered); never splits text inside a chip.
 private struct SwitchSearchHintFlow: Layout {
     var spacing: CGFloat = 8
 
@@ -335,34 +335,66 @@ private struct SwitchSearchHintFlow: Layout {
         subviews: Subviews
     ) -> (size: CGSize, places: [CGRect]) {
         let maxWidth = proposal.width ?? .infinity
-        var places: [CGRect] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var usedWidth: CGFloat = 0
 
+        // Measure chips
+        var chipSizes: [CGSize] = []
+        chipSizes.reserveCapacity(subviews.count)
         for subview in subviews {
             let unrestricted = subview.sizeThatFits(.unspecified)
             let chipWidth = min(unrestricted.width, maxWidth)
             let chipHeight = subview
                 .sizeThatFits(ProposedViewSize(width: chipWidth, height: nil))
                 .height
-
-            if x > 0, x + chipWidth > maxWidth {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-
-            places.append(CGRect(x: x, y: y, width: chipWidth, height: chipHeight))
-            rowHeight = max(rowHeight, chipHeight)
-            x += chipWidth + spacing
-            usedWidth = max(usedWidth, x - spacing)
+            chipSizes.append(CGSize(width: chipWidth, height: chipHeight))
         }
 
-        return (
-            CGSize(width: usedWidth.isFinite ? usedWidth : 0, height: y + rowHeight),
-            places
-        )
+        // Pack into rows (left-to-right), then center each row in maxWidth.
+        var rows: [[Int]] = [[]]
+        var rowWidths: [CGFloat] = [0]
+        var rowHeights: [CGFloat] = [0]
+
+        for (index, size) in chipSizes.enumerated() {
+            let rowIndex = rows.count - 1
+            let currentWidth = rowWidths[rowIndex]
+            let nextWidth = currentWidth == 0
+                ? size.width
+                : currentWidth + spacing + size.width
+
+            if currentWidth > 0, nextWidth > maxWidth {
+                rows.append([index])
+                rowWidths.append(size.width)
+                rowHeights.append(size.height)
+            } else {
+                rows[rowIndex].append(index)
+                rowWidths[rowIndex] = nextWidth
+                rowHeights[rowIndex] = max(rowHeights[rowIndex], size.height)
+            }
+        }
+
+        var places = Array(repeating: CGRect.zero, count: subviews.count)
+        var y: CGFloat = 0
+        for (rowIndex, indices) in rows.enumerated() {
+            let rowWidth = rowWidths[rowIndex]
+            let rowHeight = rowHeights[rowIndex]
+            var x = maxWidth.isFinite ? max(0, (maxWidth - rowWidth) / 2) : 0
+            for index in indices {
+                let size = chipSizes[index]
+                places[index] = CGRect(x: x, y: y, width: size.width, height: size.height)
+                x += size.width + spacing
+            }
+            y += rowHeight
+            if rowIndex < rows.count - 1 {
+                y += spacing
+            }
+        }
+
+        let totalWidth: CGFloat
+        if maxWidth.isFinite {
+            totalWidth = maxWidth
+        } else {
+            totalWidth = rowWidths.max() ?? 0
+        }
+
+        return (CGSize(width: totalWidth, height: y), places)
     }
 }

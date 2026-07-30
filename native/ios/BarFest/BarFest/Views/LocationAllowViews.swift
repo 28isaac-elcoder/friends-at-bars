@@ -3,7 +3,7 @@ import SwiftUI
 /// Shared privacy footnote under Allow Location CTAs.
 enum LocationPrivacyCopy {
     static let underButton =
-        "Only used to count you in — never sold, never shown to anyone."
+        "Your personal location is never shared, sold, or otherwise shown to anyone."
 }
 
 /// Amber strip matching web Activities “Click Here to Enable Location…”.
@@ -42,12 +42,6 @@ struct LocationAllowStrip: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
-
-                if let msg = auth.lastPromptMessage {
-                    Text(msg)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }
@@ -71,15 +65,11 @@ struct LocationAllowOverlay: View {
                         .multilineTextAlignment(.center)
 
                     Text(
-                        "Location Always lets Bar Fest update the map in real time, so you always know which bars are lighting up."
+                        auth.needsAlwaysUpgrade
+                            ? "Always allow location services to view a heat map of popular bars around you!"
+                            : "Enable location services to view a heat map of popular bars around you!"
                     )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                    Text("Your location stays private — always.")
-                        .font(.caption.weight(.medium))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -91,11 +81,7 @@ struct LocationAllowOverlay: View {
                             busy = false
                         }
                     } label: {
-                        Text(
-                            busy
-                                ? "Opening…"
-                                : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Light Up the Map")
-                        )
+                        Text(busy ? "Opening…" : "Light Up the Map")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -111,22 +97,6 @@ struct LocationAllowOverlay: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
-
-                    if auth.needsAlwaysUpgrade {
-                        Text("You chose While Using — switch to Always in Settings for live counts.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-
-                    if let msg = auth.lastPromptMessage {
-                        Text(msg)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
                 }
                 .padding()
             }
@@ -162,32 +132,20 @@ struct ActivitiesLocationInlineGate: View {
                 .foregroundStyle(.white.opacity(0.9))
                 .symbolRenderingMode(.hierarchical)
 
-            Text("Who Wants to Guess Which Bars are Popular")
+            Text("Who Wants to Guess Which Bars are Popular?")
                 .font(.title3.bold())
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 8)
 
             Text(
-                "Turn on Location Always to see real headcounts at bars near you — and add yourself to the count."
+                auth.needsAlwaysUpgrade
+                    ? "Always allow location to see real headcounts at bars near you and add yourself to the count."
+                    : "Enable Location to see real headcounts at bars near you and add yourself to the count."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
-
-            Text("Your location is never shared or shown to other users.")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
-
-            if auth.needsAlwaysUpgrade {
-                Text("Currently set to While Using — change it to Always to unlock live attendance.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
-            }
 
             Button {
                 busy = true
@@ -196,11 +154,7 @@ struct ActivitiesLocationInlineGate: View {
                     busy = false
                 }
             } label: {
-                Text(
-                    busy
-                        ? "Opening…"
-                        : (auth.needsAlwaysUpgrade ? "Upgrade to Always" : "Show Me What's Busy")
-                )
+                Text(busy ? "Opening…" : "Show Me What's Busy")
                 .font(.headline)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
@@ -217,13 +171,6 @@ struct ActivitiesLocationInlineGate: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
-
-            if let msg = auth.lastPromptMessage {
-                Text(msg)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)

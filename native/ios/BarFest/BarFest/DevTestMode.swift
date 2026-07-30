@@ -1,6 +1,6 @@
 import Foundation
 
-/// Mirrors Cap `ENABLE_DEV_TEST_MODE_UI` — Test Mode toggle + Log + Games.
+/// Mirrors Cap `ENABLE_DEV_TEST_MODE_UI` — Test Mode toggle + Log (+ WIP games on Games hub).
 enum DevTestMode {
     /// Shown when running the Bar Fest Test bundle, or when Inf.plist opts in.
     static var isUIEnabled: Bool {

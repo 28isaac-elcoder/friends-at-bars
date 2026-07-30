@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
+import { ENABLE_DEV_TEST_MODE_UI } from "@/config/devTestMode";
 
 type GameTile = {
   id: number;
@@ -9,17 +10,25 @@ type GameTile = {
   image?: string;
 };
 
-// Game tile data: optional image path (under public/ is served from root) and optional path to game
-const games: GameTile[] = [
-  { id: 1, title: "Switch Search", path: "/games/switch-search", image: "/images/games/switchsearchpic.png" },
+/** Shipped on production Games hub. */
+const productionGames: GameTile[] = [
+  {
+    id: 1,
+    title: "Switch Search",
+    path: "/games/switch-search",
+    image: "/images/games/switchsearchpic.png",
+  },
+];
+
+/** WIP games — only listed when ENABLE_DEV_TEST_MODE_UI is on. */
+const testOnlyGames: GameTile[] = [
   { id: 2, title: "Mega Toe", path: "/games/mega-toe" },
   { id: 3, title: "Ride the Bus", path: "/games/ride-the-bus" },
-  { id: 4, title: "Game 4" },
-  { id: 5, title: "Game 5" },
-  { id: 6, title: "Game 6" },
-  { id: 7, title: "Game 7" },
-  { id: 8, title: "Game 8" },
 ];
+
+const games: GameTile[] = ENABLE_DEV_TEST_MODE_UI
+  ? [...productionGames, ...testOnlyGames]
+  : productionGames;
 
 export default function Games() {
   const handleTileClick = (gameId: number) => {
@@ -30,7 +39,7 @@ export default function Games() {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-6xl px-4 py-8">
         <h1 className="mb-8 text-3xl font-bold text-foreground">Games</h1>
-        
+
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           {games.map((game) => {
             const hasPath = Boolean(game.path);
@@ -44,7 +53,6 @@ export default function Games() {
                 )}
                 onClick={() => !hasPath && handleTileClick(game.id)}
               >
-                {/* Tile image or placeholder - image fits inside box (no crop), centered with space on sides or top/bottom */}
                 <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-white overflow-hidden">
                   {game.image ? (
                     <img
@@ -57,7 +65,6 @@ export default function Games() {
                   )}
                 </div>
 
-                {/* Title Box */}
                 <div className="border border-border rounded-md bg-card p-4 mx-4 mb-4">
                   <h3 className="text-lg font-semibold text-foreground text-center">
                     {game.title}

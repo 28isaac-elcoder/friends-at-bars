@@ -95,18 +95,16 @@ export default function BottomNav() {
           <MapPin className="h-5 w-5" />
           <span>Map</span>
         </Link>
-        {ENABLE_DEV_TEST_MODE_UI ? (
-          <Link
-            to="/games"
-            className={cn(
-              "flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium transition-colors sm:px-4",
-              isGames ? "text-primary" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Gamepad2 className="h-5 w-5" />
-            <span>Games</span>
-          </Link>
-        ) : null}
+        <Link
+          to="/games"
+          className={cn(
+            "flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium transition-colors sm:px-4",
+            isGames ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Gamepad2 className="h-5 w-5" />
+          <span>Games</span>
+        </Link>
       </div>
     </nav>
   );
