@@ -35,6 +35,10 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private var lastWrittenVenue: String?
     private var lastWriteAtMs: TimeInterval = 0
     private var hadActiveVenueRow = false
+    private var lastKnownLocation: CLLocation?
+    private var lastGpsCallbackAtMs: TimeInterval = 0
+    private var gpsCallbackCount = 0
+    private var watchdogTimer: DispatchSourceTimer?
 
     private override init() {
         super.init()
@@ -70,6 +74,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         let venuesData = try JSONEncoder().encode(venues)
         defaults.set(String(data: venuesData, encoding: .utf8), forKey: Keys.venuesJson)
 
+        let previousCount = queue.sync { self.venues.count }
         try queue.sync {
             self.userId = userId
             self.venues = venues
@@ -84,6 +89,31 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                     supabaseUrl: supabaseUrl,
                     anonKey: supabaseAnonKey
                 )
+            }
+        }
+
+        let testHit = venues.first(where: { $0.name.localizedCaseInsensitiveContains("Test Location") })
+        if let testHit, testHit.coordinates.count >= 2 {
+            logLocationDiag(
+                "config venues=\(venues.count) (was \(previousCount)) testVenue=\(testHit.name) @ \(String(format: "%.5f", testHit.coordinates[0])),\(String(format: "%.5f", testHit.coordinates[1])) radius=\(Int(venueRadiusM))m skipSupabase=\(skipSupabase)"
+            )
+        } else {
+            logLocationDiag(
+                "config venues=\(venues.count) (was \(previousCount)) testVenue=(none in list) radius=\(Int(venueRadiusM))m skipSupabase=\(skipSupabase)",
+                level: venues.isEmpty ? "warn" : "info"
+            )
+        }
+
+        // Standing still often yields no new CoreLocation callbacks (distanceFilter=25m).
+        // Re-scan last fix once the venue list arrives so we don't stay stuck after venuesConfigured=0.
+        if isRunning, !venues.isEmpty {
+            if let last = queue.sync(execute: { lastKnownLocation }) {
+                logLocationDiag("config: re-scanning last known GPS against \(venues.count) venues")
+                queue.sync { lastProcessTime = 0 }
+                processLocation(last)
+            } else {
+                logLocationDiag("config: no last GPS yet — requesting one-shot location")
+                manager.requestLocation()
             }
         }
     }
@@ -142,22 +172,34 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             )
         }
 
+        let servicesOn = CLLocationManager.locationServicesEnabled()
+        var accuracyNote = "full"
+        if #available(iOS 14.0, *) {
+            switch manager.accuracyAuthorization {
+            case .fullAccuracy: accuracyNote = "precise"
+            case .reducedAccuracy: accuracyNote = "reduced"
+            @unknown default: accuracyNote = "unknown"
+            }
+        }
+
         UserDefaults.standard.set(true, forKey: Keys.trackingEnabled)
         manager.allowsBackgroundLocationUpdates = true
         manager.startUpdatingLocation()
+        // One-shot helps when standing still (distanceFilter may suppress continuous updates).
+        manager.requestLocation()
         isRunning = true
+        startWatchdog()
+
         let auth = manager.authorizationStatus.rawValue
         let venueCount = queue.sync { venues.count }
         let uidPrefix = String(userId.prefix(12))
-        DispatchQueue.main.async {
-            DiagnosticLog.shared.append(
-                category: "location",
-                message: "engine startTracking ok auth=\(auth) venues=\(venueCount) userId=\(uidPrefix)… radius=\(Int(self.venueRadiusM))m heartbeatMs=\(self.heartbeatMs)"
-            )
-        }
+        logLocationDiag(
+            "engine startTracking ok auth=\(auth) services=\(servicesOn) accuracy=\(accuracyNote) venues=\(venueCount) userId=\(uidPrefix)… radius=\(Int(venueRadiusM))m poll=\(pollIntervalMs)ms distanceFilter=25m heartbeatMs=\(heartbeatMs)"
+        )
     }
 
     func stopTracking(deactivate: Bool = true) {
+        stopWatchdog()
         UserDefaults.standard.set(false, forKey: Keys.trackingEnabled)
         manager.stopUpdatingLocation()
         isRunning = false
@@ -190,6 +232,45 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    // MARK: - Watchdog (explains silence when standing still)
+
+    private func startWatchdog() {
+        stopWatchdog()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 20, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            guard self.isRunning else { return }
+            let now = Date().timeIntervalSince1970 * 1000
+            let lastGps = self.lastGpsCallbackAtMs
+            let venueCount = self.venues.count
+            let callbacks = self.gpsCallbackCount
+            if lastGps == 0 {
+                self.logLocationDiag(
+                    "watchdog: tracking but no GPS callbacks yet venues=\(venueCount) — check Precise Location / outdoors / Settings",
+                    level: "warn"
+                )
+                DispatchQueue.main.async { self.manager.requestLocation() }
+            } else {
+                let ageSec = Int((now - lastGps) / 1000)
+                if ageSec >= 45 {
+                    self.logLocationDiag(
+                        "watchdog: last GPS \(ageSec)s ago callbacks=\(callbacks) venues=\(venueCount) (standing still often pauses updates; requesting location)",
+                        level: "warn"
+                    )
+                    DispatchQueue.main.async { self.manager.requestLocation() }
+                }
+            }
+        }
+        timer.resume()
+        watchdogTimer = timer
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.cancel()
+        watchdogTimer = nil
+    }
+
     // MARK: - CLLocationManagerDelegate
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -209,14 +290,39 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let code = (error as NSError).code
+        logLocationDiag(
+            "GPS didFail code=\(code) \(error.localizedDescription)",
+            level: "error"
+        )
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.eventDelegate?.engine(self, didFailWrite: error.localizedDescription)
+            self.eventDelegate?.engine(self, didFailWrite: "GPS: \(error.localizedDescription)")
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+
+        queue.sync {
+            lastKnownLocation = location
+            lastGpsCallbackAtMs = Date().timeIntervalSince1970 * 1000
+            gpsCallbackCount += 1
+        }
+
+        let acc = location.horizontalAccuracy
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+        logLocationDiag(
+            String(
+                format: "GPS fix #\(queue.sync { gpsCallbackCount }) %.5f,%.5f ±%.0fm venues=%d running=%@",
+                lat,
+                lon,
+                acc,
+                queue.sync { venues.count },
+                isRunning ? "true" : "false"
+            )
+        )
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -234,7 +340,11 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             lastProcessTime = now
             return true
         }
-        guard shouldProcess else { return }
+        if !shouldProcess {
+            let wait = queue.sync { Int((Double(pollIntervalMs) - (now - lastProcessTime)) / 1000) }
+            logLocationDiag("GPS throttled — next geofence scan in ~\(max(0, wait))s")
+            return
+        }
 
         processLocation(location)
     }
@@ -242,16 +352,37 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private func processLocation(_ location: CLLocation) {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
-        let nearest = nearestVenueDetail(latitude: lat, longitude: lon)
+        let venueCount = queue.sync { venues.count }
+        let nearestFew = nearestVenues(latitude: lat, longitude: lon, limit: 3)
+        let nearest = nearestFew.first
         let venueName = nearest.flatMap { $0.distance < venueRadiusM ? $0.name : nil }
+
+        if venueCount == 0 {
+            logLocationDiag(
+                "scan blocked: venuesConfigured=0 (catalog not applied yet) — cannot upsert",
+                level: "warn"
+            )
+            return
+        }
 
         if let nearest {
             let inside = nearest.distance < venueRadiusM
+            let top = nearestFew
+                .map { "\($0.name)=\(Int($0.distance))m" }
+                .joined(separator: ", ")
             logLocationDiag(
-                "scan nearest=\(nearest.name) dist=\(Int(nearest.distance))m radius=\(Int(venueRadiusM))m inside=\(inside)"
+                "scan nearest=\(nearest.name) dist=\(Int(nearest.distance))m radius=\(Int(venueRadiusM))m inside=\(inside) top3=[\(top)]"
             )
+            if !inside {
+                logLocationDiag(
+                    "outside geofence — need <\(Int(venueRadiusM))m of a catalog venue (closest \(Int(nearest.distance))m from \(nearest.name))"
+                )
+            }
         } else {
-            logLocationDiag("scan nearest=(none) venuesConfigured=\(queue.sync { venues.count })")
+            logLocationDiag(
+                "scan nearest=(none) venuesConfigured=\(venueCount) — venue coords missing?",
+                level: "warn"
+            )
         }
 
         if venueName == nil {
@@ -275,6 +406,8 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                         self.notifyWriteError(err)
                     }
                 }
+            } else if !shouldDeactivate {
+                logLocationDiag("no Supabase write — not inside any venue radius")
             }
             return
         }
@@ -290,7 +423,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             let msSince = queue.sync { Date().timeIntervalSince1970 * 1000 - lastWriteAtMs }
             let nextIn = max(0, Double(heartbeatMs) - msSince)
             logLocationDiag(
-                "skipWrite venue=\(writeDecision.name) (unchanged, heartbeat in \(Int(nextIn / 1000))s)"
+                "skipWrite venue=\(writeDecision.name) already active — next heartbeat in \(Int(nextIn / 1000))s"
             )
             return
         }
@@ -301,6 +434,10 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             )
             return
         }
+
+        logLocationDiag(
+            "upserting live_locations venue=\(writeDecision.name) changed=\(writeDecision.venueChanged) heartbeat=\(writeDecision.heartbeatDue) @ \(String(format: "%.5f", lat)),\(String(format: "%.5f", lon))"
+        )
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -327,6 +464,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                     self.lastWriteAtMs = Date().timeIntervalSince1970 * 1000
                     self.hadActiveVenueRow = true
                 }
+                self.logLocationDiag("Supabase upsert ok venue=\(writeDecision.name)")
                 DispatchQueue.main.async {
                     self.eventDelegate?.engine(
                         self,
@@ -340,11 +478,13 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Closest venue and distance (meters), regardless of radius.
-    private func nearestVenueDetail(latitude: Double, longitude: Double) -> (name: String, distance: Double)? {
+    private func nearestVenues(
+        latitude: Double,
+        longitude: Double,
+        limit: Int
+    ) -> [(name: String, distance: Double)] {
         let venuesSnapshot = queue.sync { venues }
-        var closest: (name: String, distance: Double)?
-
+        var scored: [(name: String, distance: Double)] = []
         for venue in venuesSnapshot {
             guard venue.coordinates.count >= 2 else { continue }
             let d = Self.haversineMeters(
@@ -353,18 +493,13 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                 lat2: venue.coordinates[0],
                 lon2: venue.coordinates[1]
             )
-            if closest == nil || d < closest!.distance {
-                closest = (venue.name, d)
-            }
+            scored.append((venue.name, d))
         }
-        return closest
+        return scored.sorted { $0.distance < $1.distance }.prefix(limit).map { $0 }
     }
 
-    private func nearestVenueName(latitude: Double, longitude: Double) -> String? {
-        guard let nearest = nearestVenueDetail(latitude: latitude, longitude: longitude) else {
-            return nil
-        }
-        return nearest.distance < venueRadiusM ? nearest.name : nil
+    private func nearestVenueDetail(latitude: Double, longitude: Double) -> (name: String, distance: Double)? {
+        nearestVenues(latitude: latitude, longitude: longitude, limit: 1).first
     }
 
     private func logLocationDiag(_ message: String, level: String = "info") {
@@ -381,6 +516,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         } else {
             message = error.localizedDescription
         }
+        logLocationDiag("Supabase write failed: \(message)", level: "error")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.eventDelegate?.engine(self, didFailWrite: message)

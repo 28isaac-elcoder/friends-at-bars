@@ -216,7 +216,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         Task { @MainActor in
             DiagnosticLog.shared.append(
                 category: "location",
-                message: String(format: "Fix %.5f, %.5f", coordinate.latitude, coordinate.longitude)
+                message: String(format: "bridge saw Fix %.5f, %.5f", coordinate.latitude, coordinate.longitude)
             )
         }
     }
