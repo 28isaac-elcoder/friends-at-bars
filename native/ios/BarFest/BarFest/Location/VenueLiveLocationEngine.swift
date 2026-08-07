@@ -1,4 +1,4 @@
-import CoreLocation
+﻿import CoreLocation
 import Foundation
 
 /// Presence engine: dual-radius geofences, dwell + exit hysteresis, sticky indoor
@@ -30,6 +30,9 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     private let manager = CLLocationManager()
     private let queue = DispatchQueue(label: "com.barfest.native-live-location", qos: .userInitiated)
+    /// Marks `queue` so nested calls can avoid `queue.sync` deadlocks (timers run on this queue).
+    private static let engineQueueKey = DispatchSpecificKey<UInt8>()
+    private static let engineQueueToken: UInt8 = 1
 
     private var venues: [VenueRecord] = []
     private var supabase: SupabaseLiveLocationAPI?
@@ -61,6 +64,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     private override init() {
         super.init()
+        queue.setSpecific(key: Self.engineQueueKey, value: Self.engineQueueToken)
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         manager.distanceFilter = 25
@@ -73,6 +77,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         if let stickyVenue {
             lastWrittenVenue = stickyVenue
         }
+    }
+
+    /// Runs `work` on the engine queue without deadlocking when already on that queue.
+    private func onEngineQueue<T>(_ work: () throws -> T) rethrows -> T {
+        if DispatchQueue.getSpecific(key: Self.engineQueueKey) != nil {
+            return try work()
+        }
+        return try queue.sync(execute: work)
     }
 
     func applyConfiguration(
@@ -97,7 +109,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         let venuesData = try JSONEncoder().encode(venues)
         defaults.set(String(data: venuesData, encoding: .utf8), forKey: Keys.venuesJson)
 
-        try queue.sync {
+        try onEngineQueue {
             self.userId = userId
             self.venues = venues
             self.heartbeatMs = heartbeatMs
@@ -123,8 +135,8 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         refreshMonitoredRegions(reason: "config")
 
         if isRunning, !venues.isEmpty {
-            if let last = queue.sync(execute: { lastKnownLocation }) {
-                queue.sync { lastProcessTime = 0 }
+            if let last = onEngineQueue({ lastKnownLocation }) {
+                onEngineQueue { lastProcessTime = 0 }
                 processLocation(last, force: true, source: "config-rescan")
             } else {
                 manager.requestLocation()
@@ -203,7 +215,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         startWatchdog()
         startStickyHeartbeatTimer()
 
-        let venueCount = queue.sync { venues.count }
+        let venueCount = onEngineQueue { venues.count }
         logPresence(
             "tracking ON accuracyAuth=\(accuracyNote) venues=\(venueCount) regions=\(manager.monitoredRegions.count) sticky=\(stickyVenue ?? "nil") pending=\(pendingWriteCount())"
         )
@@ -225,7 +237,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             enqueueOrSendDeactivate(source: "stopTracking")
         }
 
-        queue.sync {
+        onEngineQueue {
             lastWrittenVenue = nil
             lastWriteAtMs = 0
             dwellVenue = nil
@@ -244,7 +256,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     func currentState() -> (isRunning: Bool, lastVenue: String?, lastWriteAtMs: Int64) {
-        queue.sync {
+        onEngineQueue {
             (
                 isRunning,
                 stickyVenue ?? lastWrittenVenue,
@@ -267,9 +279,9 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
         guard manager.authorizationStatus == .authorizedAlways else { return }
 
-        let venuesSnapshot = queue.sync { venues }
-        let wakeRadius = queue.sync { approachRadiusM }
-        let origin = queue.sync { lastKnownLocation }
+        let venuesSnapshot = onEngineQueue { venues }
+        let wakeRadius = onEngineQueue { approachRadiusM }
+        let origin = onEngineQueue { lastKnownLocation }
 
         guard !venuesSnapshot.isEmpty else {
             clearMonitoredRegions(reason: "\(reason)-empty")
@@ -330,7 +342,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             started += 1
         }
 
-        queue.sync { monitoredVenueNames = desiredNames }
+        onEngineQueue { monitoredVenueNames = desiredNames }
         // Log only when the set changes meaningfully or on start/config.
         if reason == "config" || reason == "startTracking" || reason.hasPrefix("auth") {
             let sample = ranked.prefix(4).map(\.name).joined(separator: ", ")
@@ -345,7 +357,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         for region in manager.monitoredRegions {
             manager.stopMonitoring(for: region)
         }
-        queue.sync { monitoredVenueNames = [] }
+        onEngineQueue { monitoredVenueNames = [] }
         if count > 0 {
             logPresence("geofence cleared[\(reason)] n=\(count)")
         }
@@ -360,7 +372,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     private func venueName(fromRegionId id: String) -> String? {
         guard id.hasPrefix(Self.regionIdPrefix) else { return nil }
-        let venuesSnapshot = queue.sync { venues }
+        let venuesSnapshot = onEngineQueue { venues }
         return venuesSnapshot.first(where: { regionId(for: $0.name) == id })?.name
     }
 
@@ -399,8 +411,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             if lastGps == 0 || now - lastGps >= 60_000 {
                 DispatchQueue.main.async { self.manager.requestLocation() }
             }
-            // Sticky indoor: heartbeat even when GPS is quiet.
-            self.maybeStickyHeartbeat(source: "watchdog")
+            self.evaluateStickyTimers(source: "watchdog")
         }
         timer.resume()
         watchdogTimer = timer
@@ -417,11 +428,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         // Check often; actual upsert gated by heartbeatMs.
         timer.schedule(deadline: .now() + 60, repeating: 60)
         timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            if self.shouldCompleteExit() {
-                self.completeExit(source: "exit-timer")
-            }
-            self.maybeStickyHeartbeat(source: "timer")
+            self?.evaluateStickyTimers(source: "timer")
         }
         timer.resume()
         stickyHeartbeatTimer = timer
@@ -432,26 +439,76 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         stickyHeartbeatTimer = nil
     }
 
+    /// Exit countdown + optional indoor heartbeat. Timer handlers already run on `queue`.
+    private func evaluateStickyTimers(source: String) {
+        if shouldCompleteExit() {
+            completeExit(source: "exit-\(source)")
+            return
+        }
+        maybeStickyHeartbeat(source: source)
+    }
+
     private func maybeStickyHeartbeat(source: String) {
         guard let venue = stickyVenue else { return }
+
+        // Never refresh presence while leaving — that kept far-away users in headcounts.
+        let exiting = onEngineQueue { exitCandidateVenue != nil && exitCandidateSinceMs > 0 }
+        if exiting {
+            logPresence("sticky heartbeat[\(source)] skipped — exit pending")
+            return
+        }
+
         let due = Date().timeIntervalSince1970 * 1000 - lastWriteAtMs >= Double(heartbeatMs)
         guard due else { return }
-        let coords: (Double, Double)
+
         if let loc = lastKnownLocation {
-            coords = (loc.coordinate.latitude, loc.coordinate.longitude)
-        } else if let venueCoords = queue.sync(execute: {
+            let lat = loc.coordinate.latitude
+            let lon = loc.coordinate.longitude
+            let dist = distanceToVenue(named: venue, latitude: lat, longitude: lon)
+            if let dist {
+                if dist >= exitRadiusM {
+                    logPresence(
+                        "sticky heartbeat[\(source)] blocked — \(Int(dist))m outside exit \(Int(exitRadiusM))m"
+                    )
+                    beginExitCandidate(venue: venue, source: "sticky-\(source)")
+                    if shouldCompleteExit() {
+                        completeExit(source: "sticky-\(source)")
+                    }
+                    return
+                }
+                if dist >= venueRadiusM {
+                    // Still in exit band: hold sticky locally, do not refresh Supabase.
+                    logPresence(
+                        "sticky heartbeat[\(source)] skipped — \(Int(dist))m outside presence \(Int(venueRadiusM))m"
+                    )
+                    return
+                }
+            }
+            logPresence(
+                "sticky heartbeat[\(source)] venue=\(venue) dist=\(dist.map { "\(Int($0))m" } ?? "?")"
+            )
+            performUpsert(
+                venueName: venue,
+                latitude: lat,
+                longitude: lon,
+                source: "sticky-\(source)",
+                venueChanged: false
+            )
+            return
+        }
+
+        // No GPS: indoor-tolerant heartbeat at the venue pin (only when not exiting).
+        guard let venueCoords = onEngineQueue({
             venues.first(where: { $0.name == venue })?.coordinates
-        }), venueCoords.count >= 2 {
-            coords = (venueCoords[0], venueCoords[1])
-        } else {
+        }), venueCoords.count >= 2 else {
             logPresence("sticky heartbeat[\(source)] skipped — no coords for \(venue)", level: "warn")
             return
         }
-        logPresence("sticky heartbeat[\(source)] venue=\(venue) (indoor-tolerant)")
+        logPresence("sticky heartbeat[\(source)] venue=\(venue) (no GPS — venue pin)")
         performUpsert(
             venueName: venue,
-            latitude: coords.0,
-            longitude: coords.1,
+            latitude: venueCoords[0],
+            longitude: venueCoords[1],
             source: "sticky-\(source)",
             venueChanged: false
         )
@@ -486,17 +543,17 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         if !isRunning,
            UserDefaults.standard.bool(forKey: Keys.trackingEnabled),
            manager.authorizationStatus == .authorizedAlways {
-            logPresence("wake → resume tracking")
+            logPresence("wake â†’ resume tracking")
             try? startTracking()
         }
 
-        queue.sync {
+        onEngineQueue {
             lastKnownLocation = location
             lastGpsCallbackAtMs = Date().timeIntervalSince1970 * 1000
             gpsCallbackCount += 1
         }
 
-        let n = queue.sync { gpsCallbackCount }
+        let n = onEngineQueue { gpsCallbackCount }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.eventDelegate?.engine(self, didUpdateCoordinate: location.coordinate)
@@ -507,7 +564,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         let now = Date().timeIntervalSince1970 * 1000
-        let shouldProcess: Bool = queue.sync {
+        let shouldProcess: Bool = onEngineQueue {
             if now - lastProcessTime < Double(pollIntervalMs) { return false }
             lastProcessTime = now
             return true
@@ -525,8 +582,8 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         if !isRunning, manager.authorizationStatus == .authorizedAlways {
             try? startTracking()
         }
-        queue.sync { lastProcessTime = 0 }
-        if let last = queue.sync(execute: { lastKnownLocation }) {
+        onEngineQueue { lastProcessTime = 0 }
+        if let last = onEngineQueue({ lastKnownLocation }) {
             processLocation(last, force: true, source: "approach-enter:\(name)")
         }
         manager.requestLocation()
@@ -535,7 +592,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         let name = venueName(fromRegionId: region.identifier) ?? region.identifier
         logPresence("approach EXIT \(name)")
-        // Do not deactivate immediately — wait for GPS + exit hysteresis.
+        // Do not deactivate immediately - wait for GPS + exit hysteresis.
         if stickyVenue == name {
             beginExitCandidate(venue: name, source: "approach-exit")
         }
@@ -552,7 +609,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
         logPresence(
             String(
-                format: "visit wake ±%.0fm @ %.5f,%.5f",
+                format: "visit wake +/-%.0fm @ %.5f,%.5f",
                 visit.horizontalAccuracy,
                 visit.coordinate.latitude,
                 visit.coordinate.longitude
@@ -581,7 +638,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
         let accuracy = location.horizontalAccuracy
-        let venueCount = queue.sync { venues.count }
+        let venueCount = onEngineQueue { venues.count }
 
         if venueCount == 0 {
             logPresence("scan[\(source)] no venues configured", level: "warn")
@@ -628,9 +685,9 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             // Outside exit radius of sticky venue.
             if !accuracyUsableForExit {
                 logPresence(
-                    "sticky HOLD \(sticky) — GPS ±\(Int(accuracy))m too coarse to exit (need ≤\(Int(AppConfig.presenceMaxAccuracyForExitMeters))m) dist=\(Int(stickyDist))m"
+                    "sticky HOLD \(sticky) - GPS +/-\(Int(accuracy))m too coarse to exit (need <=\(Int(AppConfig.presenceMaxAccuracyForExitMeters))m) dist=\(Int(stickyDist))m"
                 )
-                maybeStickyHeartbeat(source: "coarse-gps")
+                // Do not sticky-heartbeat here: lastKnown may be far and would start/refresh exit incorrectly.
                 return
             }
             beginExitCandidate(venue: sticky, source: source)
@@ -646,7 +703,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
         if insidePresence {
             clearExitCandidate()
-            let dwellState = queue.sync { () -> (ready: Bool, count: Int) in
+            let dwellState = onEngineQueue { () -> (ready: Bool, count: Int) in
                 if dwellVenue != nearest.name {
                     dwellVenue = nearest.name
                     dwellFixCount = 1
@@ -658,7 +715,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             let dwellNeeded = AppConfig.presenceDwellFixCount
             if !dwellState.ready {
                 logPresence(
-                    "dwell \(dwellState.count)/\(dwellNeeded) \(nearest.name) dist=\(Int(nearest.distance))m ±\(Int(accuracy))m [\(source)]"
+                    "dwell \(dwellState.count)/\(dwellNeeded) \(nearest.name) dist=\(Int(nearest.distance))m +/-\(Int(accuracy))m [\(source)]"
                 )
                 return
             }
@@ -673,7 +730,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                     venueChanged: writeDecision.changed
                 )
             } else {
-                logPresence("presence ok \(nearest.name) — heartbeat not due yet")
+                logPresence("presence ok \(nearest.name) - heartbeat not due yet")
             }
             return
         }
@@ -688,7 +745,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     private func distanceToVenue(named name: String, latitude: Double, longitude: Double) -> Double? {
-        let venuesSnapshot = queue.sync { venues }
+        let venuesSnapshot = onEngineQueue { venues }
         guard let venue = venuesSnapshot.first(where: { $0.name == name }),
               venue.coordinates.count >= 2
         else { return nil }
@@ -702,7 +759,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     @discardableResult
     private func noteDwell(venue: String, resetOther: Bool) -> Bool {
-        queue.sync {
+        onEngineQueue {
             if dwellVenue != venue {
                 dwellVenue = venue
                 dwellFixCount = 1
@@ -715,14 +772,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     private func resetDwell() {
-        queue.sync {
+        onEngineQueue {
             dwellVenue = nil
             dwellFixCount = 0
         }
     }
 
     private func shouldUpsert(venue: String, force: Bool) -> (write: Bool, changed: Bool) {
-        queue.sync {
+        onEngineQueue {
             let changed = venue != lastWrittenVenue
             let msSince = Date().timeIntervalSince1970 * 1000 - lastWriteAtMs
             let heartbeatDue = msSince >= Double(heartbeatMs) || lastWriteAtMs == 0
@@ -735,7 +792,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     private func beginExitCandidate(venue: String, source: String) {
         let now = Date().timeIntervalSince1970 * 1000
-        let started: Bool = queue.sync {
+        let started: Bool = onEngineQueue {
             if exitCandidateVenue == venue, exitCandidateSinceMs > 0 {
                 return false
             }
@@ -745,23 +802,23 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
         if started {
             logPresence(
-                "exit candidate \(venue) — need \(Int(AppConfig.presenceExitConfirmSeconds))s outside \(Int(exitRadiusM))m [\(source)]"
+                "exit candidate \(venue) - need \(Int(AppConfig.presenceExitConfirmSeconds))s outside \(Int(exitRadiusM))m [\(source)]"
             )
         } else {
-            let elapsed = queue.sync { (now - exitCandidateSinceMs) / 1000 }
+            let elapsed = onEngineQueue { (now - exitCandidateSinceMs) / 1000 }
             logPresence("exit pending \(venue) \(Int(elapsed))s/\(Int(AppConfig.presenceExitConfirmSeconds))s [\(source)]")
         }
     }
 
     private func clearExitCandidate() {
-        queue.sync {
+        onEngineQueue {
             exitCandidateVenue = nil
             exitCandidateSinceMs = 0
         }
     }
 
     private func shouldCompleteExit() -> Bool {
-        queue.sync {
+        onEngineQueue {
             guard exitCandidateVenue != nil, exitCandidateSinceMs > 0 else { return false }
             let elapsed = Date().timeIntervalSince1970 * 1000 - exitCandidateSinceMs
             return elapsed >= AppConfig.presenceExitConfirmSeconds * 1000
@@ -770,7 +827,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
 
     private func completeExit(source: String) {
         let venue = stickyVenue ?? exitCandidateVenue ?? "?"
-        logPresence("exit confirmed \(venue) [\(source)] — deactivating")
+        logPresence("exit confirmed \(venue) [\(source)] - deactivating")
         clearSticky(reason: source)
         resetDwell()
         clearExitCandidate()
@@ -790,7 +847,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
         stickyVenue = nil
         UserDefaults.standard.removeObject(forKey: Keys.stickyVenue)
-        queue.sync {
+        onEngineQueue {
             lastWrittenVenue = nil
             lastWriteAtMs = 0
         }
@@ -977,7 +1034,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             guard let self else { return }
             switch result {
             case .success:
-                self.queue.sync {
+                self.onEngineQueue {
                     self.lastWrittenVenue = venueName
                     self.lastWriteAtMs = Date().timeIntervalSince1970 * 1000
                 }
@@ -1021,7 +1078,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         longitude: Double,
         limit: Int
     ) -> [(name: String, distance: Double)] {
-        let venuesSnapshot = queue.sync { venues }
+        let venuesSnapshot = onEngineQueue { venues }
         var scored: [(name: String, distance: Double)] = []
         for venue in venuesSnapshot {
             guard venue.coordinates.count >= 2 else { continue }
