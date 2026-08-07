@@ -5,6 +5,12 @@ struct BarFestApp: App {
     @StateObject private var appModel = AppModel()
     @StateObject private var testMode = TestModeStore.shared
 
+    init() {
+        // Re-attach geofences / significant-location ASAP so a cold wake from a region
+        // event can resume presence writes before the catalog finishes loading.
+        VenueLiveLocationEngine.shared.restoreIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootTabView()
@@ -43,10 +49,34 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in
                     self?.lastVenueName = name
                 }
+            },
+            onPresenceWrite: { [weak self] action in
+                Task { @MainActor in
+                    await self?.refreshLiveCountsOnly(source: "presence-\(action)")
+                }
             }
         )
         let state = VenueLiveLocationEngine.shared.currentState()
         lastVenueName = state.lastVenue
+    }
+
+    /// Lightweight headcount refresh after our own upsert/deactivate (avoids full catalog round-trip).
+    func refreshLiveCountsOnly(source: String) async {
+        if TestModeStore.shared.useMockCheckIns {
+            venueCounts = mockVenueCounts(from: venues)
+            await logHeadcountSnapshot(source: source)
+            return
+        }
+        do {
+            venueCounts = try await LiveLocationService.venueCounts()
+            await logHeadcountSnapshot(source: source)
+        } catch {
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "headcount refresh[\(source)] failed: \(error.localizedDescription)",
+                level: "error"
+            )
+        }
     }
 
     func refreshCatalog() async {
@@ -157,9 +187,15 @@ final class AppModel: ObservableObject {
 @MainActor
 final class LocationBridge: VenueLiveLocationEngineDelegate {
     private var onVenue: ((String?) -> Void)?
+    private var onPresenceWrite: ((String) -> Void)?
 
-    func start(venues: [CatalogVenue], onVenue: @escaping (String?) -> Void) {
+    func start(
+        venues: [CatalogVenue],
+        onVenue: @escaping (String?) -> Void,
+        onPresenceWrite: ((String) -> Void)? = nil
+    ) {
         self.onVenue = onVenue
+        self.onPresenceWrite = onPresenceWrite
         do {
             let records = venues.map {
                 VenueRecord(name: $0.name, area: $0.area, coordinates: [$0.latitude, $0.longitude])
@@ -176,11 +212,9 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             )
             VenueLiveLocationEngine.shared.eventDelegate = self
             LocationAuthorizationStore.shared.softStartTrackingIfPossible()
-            let auth = LocationAuthorizationStore.shared.status.rawValue
-            let uid = String(AnonymousIdentity.userId().prefix(12))
             DiagnosticLog.shared.append(
                 category: "location",
-                message: "Tracking start requested venues=\(records.count) auth=\(auth) userId=\(uid)… radius=\(Int(AppConfig.venueRadiusMeters))m heartbeatMs=\(AppConfig.liveLocationHeartbeatMs) countMaxAgeSec=\(AppConfig.liveLocationCountMaxAgeSeconds)"
+                message: "presence engine start venues=\(records.count) auth=\(LocationAuthorizationStore.shared.status.rawValue) presence=\(Int(AppConfig.venueRadiusMeters))m approach=\(Int(AppConfig.venueApproachRadiusMeters))m exit=\(Int(AppConfig.venueExitRadiusMeters))m"
             )
         } catch {
             print("LocationBridge start: \(error)")
@@ -206,19 +240,10 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             venueRadiusM: AppConfig.venueRadiusMeters,
             skipSupabase: false
         )
-        DiagnosticLog.shared.append(
-            category: "location",
-            message: "Venues updated count=\(records.count) heartbeatMs=\(AppConfig.liveLocationHeartbeatMs)"
-        )
     }
 
     nonisolated func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {
-        Task { @MainActor in
-            DiagnosticLog.shared.append(
-                category: "location",
-                message: String(format: "bridge saw Fix %.5f, %.5f", coordinate.latitude, coordinate.longitude)
-            )
-        }
+        // Coordinate stream is handled inside the presence engine logs.
     }
 
     nonisolated func engine(
@@ -228,30 +253,21 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         venueChanged: Bool,
         heartbeatDue: Bool
     ) {
-        Task { @MainActor in
-            DiagnosticLog.shared.append(
-                category: "location",
-                message: "willWrite \(action) venue=\(venueName) changed=\(venueChanged) heartbeat=\(heartbeatDue)"
-            )
-        }
+        // Engine logs upsert intent; bridge only reacts to didWrite.
     }
 
     nonisolated func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?) {
         Task { @MainActor in
             self.onVenue?(venueName)
-            DiagnosticLog.shared.append(
-                category: "location",
-                message: "didWrite \(action) venue=\(venueName ?? "nil")"
-            )
+            self.onPresenceWrite?(action)
         }
     }
 
     nonisolated func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
-        print("live location write failed: \(message)")
         Task { @MainActor in
             DiagnosticLog.shared.append(
                 category: "location",
-                message: "write failed: \(message)",
+                message: "bridge write failed: \(message)",
                 level: "error"
             )
         }

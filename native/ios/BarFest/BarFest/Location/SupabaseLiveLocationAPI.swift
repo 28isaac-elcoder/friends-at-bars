@@ -73,10 +73,6 @@ final class SupabaseLiveLocationAPI {
             return
         }
 
-        DiagnosticLog.log(
-            category: "location",
-            message: "upsert POST live_locations venue=\(venueName) userId=\(String(userId.prefix(12)))…"
-        )
         run(request: request, label: "upsert:\(venueName)", completion: completion)
     }
 
@@ -120,10 +116,6 @@ final class SupabaseLiveLocationAPI {
             return
         }
 
-        DiagnosticLog.log(
-            category: "location",
-            message: "deactivate PATCH live_locations userId=\(String(userId.prefix(12)))…"
-        )
         run(request: request, label: "deactivate", completion: completion)
     }
 
@@ -168,10 +160,6 @@ final class SupabaseLiveLocationAPI {
                 completion(.failure(SupabaseAPIError.httpStatus(http.statusCode, body)))
                 return
             }
-            DiagnosticLog.log(
-                category: "location",
-                message: "\(label) ok HTTP \(http.statusCode)"
-            )
             completion(.success(()))
         }.resume()
     }

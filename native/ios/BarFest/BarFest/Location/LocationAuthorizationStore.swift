@@ -41,6 +41,10 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
                 message: "softStart: requesting Always (notDetermined)"
             )
         case .authorizedAlways:
+            DiagnosticLog.shared.append(
+                category: "location",
+                message: "softStart: Always — starting presence engine"
+            )
             do {
                 try VenueLiveLocationEngine.shared.startTracking()
             } catch {

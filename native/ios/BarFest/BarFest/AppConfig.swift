@@ -20,7 +20,19 @@ enum AppConfig {
             ?? "YOUR_PUBLISHABLE_KEY"
     }
 
+    /// Tight radius used to confirm presence (write to Supabase).
     static let venueRadiusMeters: Double = 100
+    /// Larger OS geofence / approach radius — wakes the app before the tight radius.
+    static let venueApproachRadiusMeters: Double = 400
+    /// Must be this far from the sticky venue before exit countdown can complete.
+    static let venueExitRadiusMeters: Double = 150
+    /// Consecutive inside-presence fixes required before first upsert (dwell).
+    static let presenceDwellFixCount: Int = 2
+    /// Seconds continuously outside the exit radius before deactivating sticky presence.
+    static let presenceExitConfirmSeconds: TimeInterval = 90
+    /// Ignore a GPS sample for exit decisions when horizontalAccuracy is worse than this.
+    static let presenceMaxAccuracyForExitMeters: Double = 200
+
     static let maxChatChars = 150
 
     /// How often we re-upsert `live_locations` while staying at the same bar.
