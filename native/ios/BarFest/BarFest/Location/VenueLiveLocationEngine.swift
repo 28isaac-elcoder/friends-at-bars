@@ -600,7 +600,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             accuracy > 0 && accuracy <= AppConfig.presenceMaxAccuracyForExitMeters
 
         // Sticky decisions use distance to the sticky venue, not whichever bar is nearest.
-        if let sticky {
+        if let sticky = stickyVenue {
             let stickyDist = distanceToVenue(named: sticky, latitude: lat, longitude: lon)
                 ?? nearest.distance
             let insidePresenceSticky = stickyDist < venueRadiusM
