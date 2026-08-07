@@ -42,6 +42,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private var venueRadiusM: Double = AppConfig.venueRadiusMeters
     private var approachRadiusM: Double = AppConfig.venueApproachRadiusMeters
     private var exitRadiusM: Double = AppConfig.venueExitRadiusMeters
+    private var hardClearRadiusM: Double = AppConfig.venueHardClearRadiusMeters
     private var skipSupabase = false
 
     private var isRunning = false
@@ -117,6 +118,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             self.venueRadiusM = venueRadiusM
             self.approachRadiusM = AppConfig.venueApproachRadiusMeters
             self.exitRadiusM = AppConfig.venueExitRadiusMeters
+            self.hardClearRadiusM = AppConfig.venueHardClearRadiusMeters
             self.skipSupabase = skipSupabase
             if skipSupabase {
                 self.supabase = nil
@@ -129,7 +131,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         logPresence(
-            "config venues=\(venues.count) presence=\(Int(venueRadiusM))m approach=\(Int(approachRadiusM))m exit=\(Int(exitRadiusM))m dwell=\(AppConfig.presenceDwellFixCount) sticky=\(stickyVenue ?? "nil")"
+            "config venues=\(venues.count) presence=\(Int(venueRadiusM))m exit=\(Int(exitRadiusM))m hardClear=\(Int(hardClearRadiusM))m approach=\(Int(approachRadiusM))m dwell=\(AppConfig.presenceDwellFixCount) sticky=\(stickyVenue ?? "nil")"
         )
 
         refreshMonitoredRegions(reason: "config")
@@ -466,6 +468,13 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             let lon = loc.coordinate.longitude
             let dist = distanceToVenue(named: venue, latitude: lat, longitude: lon)
             if let dist {
+                if dist >= hardClearRadiusM {
+                    logPresence(
+                        "hard clear[\(source)] \(venue) dist=\(Int(dist))m >=\(Int(hardClearRadiusM))m"
+                    )
+                    completeExit(source: "hard-clear-\(source)")
+                    return
+                }
                 if dist >= exitRadiusM {
                     logPresence(
                         "sticky heartbeat[\(source)] blocked — \(Int(dist))m outside exit \(Int(exitRadiusM))m"
@@ -476,13 +485,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                     }
                     return
                 }
-                if dist >= venueRadiusM {
-                    // Still in exit band: hold sticky locally, do not refresh Supabase.
-                    logPresence(
-                        "sticky heartbeat[\(source)] skipped — \(Int(dist))m outside presence \(Int(venueRadiusM))m"
-                    )
-                    return
-                }
+                // exit == presence (100m): no separate "outside presence but in exit band" upsert skip
             }
             logPresence(
                 "sticky heartbeat[\(source)] venue=\(venue) dist=\(dist.map { "\(Int($0))m" } ?? "?")"
@@ -592,9 +595,11 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         let name = venueName(fromRegionId: region.identifier) ?? region.identifier
         logPresence("approach EXIT \(name)")
-        // Do not deactivate immediately - wait for GPS + exit hysteresis.
+        // Left the 400m approach fence of the sticky venue — past hard-clear; drop immediately.
         if stickyVenue == name {
-            beginExitCandidate(venue: name, source: "approach-exit")
+            logPresence("hard clear[approach-exit] \(name) left \(Int(approachRadiusM))m wake fence")
+            completeExit(source: "approach-exit")
+            return
         }
         manager.requestLocation()
     }
@@ -690,9 +695,17 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
                 // Do not sticky-heartbeat here: lastKnown may be far and would start/refresh exit incorrectly.
                 return
             }
-            beginExitCandidate(venue: sticky, source: source)
-            if shouldCompleteExit() {
-                completeExit(source: source)
+            // Clearly gone: no 90s wait.
+            if stickyDist >= hardClearRadiusM {
+                logPresence(
+                    "hard clear[\(source)] \(sticky) dist=\(Int(stickyDist))m >=\(Int(hardClearRadiusM))m"
+                )
+                completeExit(source: "hard-clear-\(source)")
+            } else {
+                beginExitCandidate(venue: sticky, source: source)
+                if shouldCompleteExit() {
+                    completeExit(source: source)
+                }
             }
             // Fall through so a new nearby bar can start dwell after exit completes;
             // if still sticky, stop here.

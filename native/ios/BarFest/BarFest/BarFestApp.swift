@@ -214,7 +214,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             LocationAuthorizationStore.shared.softStartTrackingIfPossible()
             DiagnosticLog.shared.append(
                 category: "location",
-                message: "presence engine start venues=\(records.count) auth=\(LocationAuthorizationStore.shared.status.rawValue) presence=\(Int(AppConfig.venueRadiusMeters))m approach=\(Int(AppConfig.venueApproachRadiusMeters))m exit=\(Int(AppConfig.venueExitRadiusMeters))m"
+                message: "presence engine start venues=\(records.count) auth=\(LocationAuthorizationStore.shared.status.rawValue) presence=\(Int(AppConfig.venueRadiusMeters))m exit=\(Int(AppConfig.venueExitRadiusMeters))m hardClear=\(Int(AppConfig.venueHardClearRadiusMeters))m approach=\(Int(AppConfig.venueApproachRadiusMeters))m"
             )
         } catch {
             print("LocationBridge start: \(error)")
