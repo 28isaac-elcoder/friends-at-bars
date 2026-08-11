@@ -286,7 +286,7 @@ final class RideTheBusEngine: ObservableObject {
             guard let lastRank else { return true }
             return c.rank.value != lastRank
         }
-        let avoidRound1: (RTBCard) -> Bool = { [runCards] c in
+        let avoidRound1: (RTBCard) -> Bool = { [runCards, round] c in
             guard round >= 1, let first = runCards.first else { return true }
             return c.rank != first.rank
         }
