@@ -110,14 +110,14 @@ export default function RideTheBus() {
   beginGameRef.current = beginGame;
 
   const submitRankedRun = useCallback(
-    async (completed: boolean, drinkCount: number) => {
+    async (completed: boolean) => {
       const venue = rankedVenueRef.current;
       if (!venue || rankedSubmittedRef.current) return;
       rankedSubmittedRef.current = true;
       await submitRankedScore(ranked.userId, {
         gameType: "ride-the-bus",
         venueName: venue,
-        drinkCount,
+        drinkCount: 0,
         completed,
       });
       setPlayMode("casual");
@@ -131,8 +131,8 @@ export default function RideTheBus() {
     if (playMode !== "ranked" || state.modal !== "win" || rankedSubmittedRef.current) {
       return;
     }
-    void submitRankedRun(true, state.drinkCount);
-  }, [playMode, state.modal, state.drinkCount, submitRankedRun]);
+    void submitRankedRun(true);
+  }, [playMode, state.modal, submitRankedRun]);
 
   // Fail interstitial: short banner → clear cards + long copy → ~2s → deal.
   useEffect(() => {
@@ -158,7 +158,7 @@ export default function RideTheBus() {
   const exitToLobbyOrGames = useCallback(() => {
     if (playMode === "ranked") {
       if (!rankedSubmittedRef.current) {
-        void submitRankedRun(false, state.drinkCount);
+        void submitRankedRun(false);
       } else {
         setPlayMode("casual");
         rankedVenueRef.current = null;
@@ -170,7 +170,7 @@ export default function RideTheBus() {
     }
     setState(initialState());
     navigate("/games");
-  }, [playMode, state.drinkCount, submitRankedRun, navigate]);
+  }, [playMode, submitRankedRun, navigate]);
 
   const canGuess =
     state.modal === "none" &&

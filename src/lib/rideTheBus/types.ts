@@ -57,12 +57,14 @@ export type RideTheBusState = {
   phase: GamePhase;
   lastDrawnRank: number | null;
   modal: ModalKind;
-  /** Wrong guesses increment this; resets on Restart / new game from lobby */
-  drinkCount: number;
   /** Last pick — UI lights this up and dims others */
   selectedGuess: Guess | null;
   failHeadline: string | null;
   failSubtitle: string | null;
+  /** Pending subtitle applied when entering fail interstitial */
+  pendingFailSubtitle: string | null;
+  failCycleIndex: number;
+  tieFailCycleIndex: number;
 };
 
 export function emptyRoundSlots(): RoundSlots {

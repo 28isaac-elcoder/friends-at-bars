@@ -1,9 +1,36 @@
 import { freshShuffledDeck, rankValue, shuffle } from "./deck";
 import { pickNextCard } from "./draw";
-import { isCorrectGuess } from "./evaluate";
+import { isCorrectGuess, isRankTie } from "./evaluate";
+import {
+  ALL_FAIL_MESSAGES,
+  TWO_SIP_FAIL_MESSAGES,
+  type FailCopy,
+} from "./failMessages";
 import type { Card, Guess, RideTheBusState } from "./types";
 import { emptyRoundSlots, slotIndexForRound } from "./types";
 
+function nextFailCopy(state: RideTheBusState, isTie: boolean): {
+  copy: FailCopy;
+  failCycleIndex: number;
+  tieFailCycleIndex: number;
+} {
+  if (isTie) {
+    const pool = TWO_SIP_FAIL_MESSAGES;
+    const idx = state.tieFailCycleIndex % pool.length;
+    return {
+      copy: pool[idx]!,
+      failCycleIndex: state.failCycleIndex,
+      tieFailCycleIndex: state.tieFailCycleIndex + 1,
+    };
+  }
+  const pool = ALL_FAIL_MESSAGES;
+  const idx = state.failCycleIndex % pool.length;
+  return {
+    copy: pool[idx]!,
+    failCycleIndex: state.failCycleIndex + 1,
+    tieFailCycleIndex: state.tieFailCycleIndex,
+  };
+}
 function reshuffleIfNeeded(state: RideTheBusState): RideTheBusState {
   if (state.deck.length > 0) return state;
 
@@ -53,6 +80,7 @@ function drawForRound(state: RideTheBusState): RideTheBusState {
       selectedGuess: null,
       failHeadline: null,
       failSubtitle: null,
+      pendingFailSubtitle: null,
     };
   }
 
@@ -66,6 +94,7 @@ function drawForRound(state: RideTheBusState): RideTheBusState {
     selectedGuess: null,
     failHeadline: null,
     failSubtitle: null,
+    pendingFailSubtitle: null,
   };
 }
 
@@ -95,10 +124,12 @@ export function initialState(): RideTheBusState {
     phase: "prompt",
     lastDrawnRank: null,
     modal: "none",
-    drinkCount: 0,
     selectedGuess: null,
     failHeadline: null,
     failSubtitle: null,
+    pendingFailSubtitle: null,
+    failCycleIndex: 0,
+    tieFailCycleIndex: 0,
   };
 }
 
@@ -115,6 +146,7 @@ export function startRun(state: RideTheBusState): RideTheBusState {
     selectedGuess: null,
     failHeadline: null,
     failSubtitle: null,
+    pendingFailSubtitle: null,
   };
 }
 
@@ -179,12 +211,20 @@ export function applyGuess(
   );
 
   if (!correct) {
+    const tie = isRankTie(working.round, working.runCards, working.current);
+    const { copy, failCycleIndex, tieFailCycleIndex } = nextFailCopy(
+      working,
+      tie
+    );
     return {
       ...working,
       selectedGuess: guess,
       phase: "failing",
-      failHeadline: "Engine Overheated!",
+      failHeadline: copy.headline,
       failSubtitle: null,
+      pendingFailSubtitle: copy.subtitle,
+      failCycleIndex,
+      tieFailCycleIndex,
     };
   }
 
@@ -200,7 +240,6 @@ export function enterFailInterstitial(state: RideTheBusState): RideTheBusState {
   const failed = collectRunCards(state);
   return {
     ...state,
-    drinkCount: state.drinkCount + 1,
     discard: [...state.discard, ...failed],
     current: null,
     roundSlots: emptyRoundSlots(),
@@ -209,8 +248,9 @@ export function enterFailInterstitial(state: RideTheBusState): RideTheBusState {
     selectedGuess: null,
     lastDrawnRank: null,
     phase: "failInterstitial",
-    failHeadline: "Engine Overheated!",
-    failSubtitle: "Sit tight, take a drink, try again.",
+    failHeadline: state.failHeadline,
+    failSubtitle: state.pendingFailSubtitle,
+    pendingFailSubtitle: null,
   };
 }
 

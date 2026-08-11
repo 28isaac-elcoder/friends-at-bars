@@ -1,6 +1,27 @@
 import { isRedSuit, rankValue } from "./deck";
 import type { Card, Guess, RoundIndex } from "./types";
 
+/** Same-rank conflict on Higher/Lower or Inside/Outside. */
+export function isRankTie(
+  round: RoundIndex,
+  runCards: Card[],
+  current: Card
+): boolean {
+  const v = rankValue(current.rank);
+  if (round === 1) {
+    const first = runCards[0];
+    if (!first) return false;
+    return v === rankValue(first.rank);
+  }
+  if (round === 2) {
+    const c1 = runCards[0];
+    const c2 = runCards[1];
+    if (!c1 || !c2) return false;
+    return v === rankValue(c1.rank) || v === rankValue(c2.rank);
+  }
+  return false;
+}
+
 export function isCorrectGuess(
   guess: Guess,
   round: RoundIndex,

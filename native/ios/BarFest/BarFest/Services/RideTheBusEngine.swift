@@ -88,7 +88,6 @@ final class RideTheBusEngine: ObservableObject {
     @Published var slots: [RTBCard?] = [nil, nil, nil]
     @Published var round: Int = 0
     @Published var phase: RTBPhase = .awaitingGuess
-    @Published var drinkCount = 0
     @Published var lastResultCorrect: Bool?
     @Published var message: String?
     @Published var messageSubtitle: String?
@@ -97,6 +96,9 @@ final class RideTheBusEngine: ObservableObject {
 
     private var runCards: [RTBCard] = []
     private var lastDrawnRank: Int?
+    private var failCycleIndex = 0
+    private var tieFailCycleIndex = 0
+    private var pendingFailSubtitle: String?
 
     // MARK: - Public actions
 
@@ -107,13 +109,13 @@ final class RideTheBusEngine: ObservableObject {
         phase = .awaitingGuess
         clearMessages()
         selectedGuess = nil
-        drinkCount = 0
+        failCycleIndex = 0
+        tieFailCycleIndex = 0
     }
 
     /// Lobby → playing with a fresh 52-card session.
     func startGame() {
         resetBoard(freshDeck: true)
-        drinkCount = 0
         screen = .playing
         clearMessages()
         selectedGuess = nil
@@ -152,9 +154,13 @@ final class RideTheBusEngine: ObservableObject {
         if correct {
             message = "Correct!"
             messageSubtitle = nil
+            pendingFailSubtitle = nil
         } else {
-            message = "Engine Overheated!"
+            let tie = Self.isRankTie(round: round, runCards: runCards, current: card)
+            let copy = nextFailCopy(isTie: tie)
+            message = copy.headline
             messageSubtitle = nil
+            pendingFailSubtitle = copy.subtitle
         }
     }
 
@@ -209,7 +215,6 @@ final class RideTheBusEngine: ObservableObject {
         var seen = Set<String>()
         let unique = failed.filter { seen.insert($0.id).inserted }
         discard.append(contentsOf: unique)
-        drinkCount += 1
 
         slots = [nil, nil, nil]
         runCards = []
@@ -220,8 +225,9 @@ final class RideTheBusEngine: ObservableObject {
         lastDrawnRank = nil
         lastResultCorrect = false
         phase = .failInterstitial
-        message = "Engine Overheated!"
-        messageSubtitle = "Sit tight, take a drink, try again."
+        // Keep headline; reveal subtitle after cards fall (picture 2).
+        messageSubtitle = pendingFailSubtitle
+        pendingFailSubtitle = nil
     }
 
     /// After ~2s reading pause: clear fail copy and deal next face-down active card.
@@ -323,6 +329,20 @@ final class RideTheBusEngine: ObservableObject {
     private func clearMessages() {
         message = nil
         messageSubtitle = nil
+        pendingFailSubtitle = nil
+    }
+
+    private func nextFailCopy(isTie: Bool) -> RTBFailCopy {
+        if isTie {
+            let pool = RTBFailMessages.twoSip
+            let copy = pool[tieFailCycleIndex % pool.count]
+            tieFailCycleIndex += 1
+            return copy
+        }
+        let pool = RTBFailMessages.all
+        let copy = pool[failCycleIndex % pool.count]
+        failCycleIndex += 1
+        return copy
     }
 
     private func guessMatchesRound(_ guess: RTBGuess) -> Bool {
@@ -336,6 +356,21 @@ final class RideTheBusEngine: ObservableObject {
     }
 
     // MARK: - Evaluate
+
+    /// True when Higher/Lower or Inside/Outside draws the same rank as a bound card.
+    static func isRankTie(round: Int, runCards: [RTBCard], current: RTBCard) -> Bool {
+        let v = current.rank.value
+        switch round {
+        case 1:
+            guard let first = runCards.first else { return false }
+            return v == first.rank.value
+        case 2:
+            guard runCards.count >= 2 else { return false }
+            return v == runCards[0].rank.value || v == runCards[1].rank.value
+        default:
+            return false
+        }
+    }
 
     static func isCorrect(
         guess: RTBGuess,
