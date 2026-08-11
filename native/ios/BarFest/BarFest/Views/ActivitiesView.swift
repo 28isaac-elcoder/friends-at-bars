@@ -4,8 +4,6 @@ struct ActivitiesView: View {
     @EnvironmentObject private var appModel: AppModel
     @ObservedObject private var testMode = TestModeStore.shared
     @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
-    @State private var checkIns: [CheckInRow] = []
-    @State private var error: String?
     @State private var populationSort: PopulationSort = .mostPopulated
     @State private var areaFilter: CampusArea?
     @State private var selectedVenue: CatalogVenue?
@@ -148,25 +146,6 @@ struct ActivitiesView: View {
                     } else {
                         ActivitiesLocationInlineGate()
                     }
-
-                    if showBarAttendance && !testMode.useMockCheckIns {
-                        Text("Recent check-ins")
-                            .font(.headline)
-                            .padding(.top, 4)
-                        if let error {
-                            Text(error).font(.caption).foregroundStyle(.red)
-                        }
-                        ForEach(checkIns.prefix(10)) { row in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(row.venue).font(.subheadline.weight(.semibold))
-                                Text(row.displaySubtitle)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 6)
-                        }
-                    }
                 }
                 .padding()
             }
@@ -211,17 +190,6 @@ struct ActivitiesView: View {
             await appModel.refreshHeadcounts(source: "activities-pull")
         } else {
             await appModel.refreshCatalog()
-        }
-        if testMode.useMockCheckIns {
-            checkIns = []
-            error = nil
-            return
-        }
-        do {
-            checkIns = try await CheckInService.recent()
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
         }
     }
 }

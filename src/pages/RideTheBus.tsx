@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/Button";
 import { RideTheBusGameBoard } from "@/components/rideTheBus/RideTheBusGameBoard";
+import { CardBack } from "@/components/rideTheBus/CardBack";
 import { shellHeightImmersive } from "@/constants/layoutHeights";
 import {
   RankedGate,
@@ -11,22 +17,20 @@ import {
 } from "@/features/ranked";
 import {
   applyGuess,
-  dismissWinModal,
+  continueSessionAfterWin,
+  enterFailInterstitial,
+  finishFailInterstitial,
   initialState,
-  startRun,
-  type ColorGuess,
-  type CompareGuess,
+  startFreshSession,
   type Guess,
-  type RangeGuess,
   type RideTheBusState,
-  type Suit,
 } from "@/lib/rideTheBus";
 
 type View = "lobby" | "rules" | "game";
 type PlayMode = "casual" | "ranked";
 
 const RULES_COPY = (
-  <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+  <div className="space-y-3 text-sm leading-relaxed text-white/65">
     <p>
       Ride the Bus — four rounds. Each round you get one card face down, make a
       guess, then the card is revealed. Wrong guess: the drink counter goes up,
@@ -34,21 +38,21 @@ const RULES_COPY = (
     </p>
     <ol className="list-decimal space-y-1 pl-5">
       <li>
-        <strong className="text-foreground">Red or black</strong> — hearts and
+        <strong className="text-white">Red or black</strong> — hearts and
         diamonds are red; clubs and spades are black.
       </li>
       <li>
-        <strong className="text-foreground">Higher or lower</strong> — compared
-        to your first card. Ace is high. Same rank loses either way.
+        <strong className="text-white">Higher or lower</strong> — compared to
+        your first card. Ace is high. Same rank loses either way.
       </li>
       <li>
-        <strong className="text-foreground">Inside or outside</strong> — compared
-        to the first two cards. Must be strictly between (not equal to either).
-        Same rank as a boundary loses either way.
+        <strong className="text-white">Inside or outside</strong> — compared to
+        the first two cards. Must be strictly between (not equal to either). Same
+        rank as a boundary loses either way.
       </li>
       <li>
-        <strong className="text-foreground">Suit</strong> — hearts, diamonds,
-        clubs, or spades.
+        <strong className="text-white">Suit</strong> — hearts, diamonds, clubs,
+        or spades.
       </li>
     </ol>
     <p>
@@ -61,12 +65,23 @@ const RULES_COPY = (
 
 const shellH = shellHeightImmersive();
 
-const SUITS: { suit: Suit; label: string }[] = [
-  { suit: "hearts", label: "Hearts" },
-  { suit: "diamonds", label: "Diamonds" },
-  { suit: "clubs", label: "Clubs" },
-  { suit: "spades", label: "Spades" },
-];
+function SecondaryButton({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-xl border border-white/20 bg-transparent py-3.5 text-base font-semibold text-white/90 active:bg-white/5"
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function RideTheBus() {
   const navigate = useNavigate();
@@ -88,15 +103,11 @@ export default function RideTheBus() {
   });
 
   const beginGame = useCallback(() => {
-    setState(startRun(initialState()));
+    setState(startFreshSession());
     setView("game");
   }, []);
 
   beginGameRef.current = beginGame;
-
-  const restartGame = useCallback(() => {
-    setState(startRun(initialState()));
-  }, []);
 
   const submitRankedRun = useCallback(
     async (completed: boolean, drinkCount: number) => {
@@ -123,38 +134,56 @@ export default function RideTheBus() {
     void submitRankedRun(true, state.drinkCount);
   }, [playMode, state.modal, state.drinkCount, submitRankedRun]);
 
+  // Fail interstitial: short banner → clear cards + long copy → ~2s → deal.
+  useEffect(() => {
+    if (state.phase !== "failing") return;
+    const t = window.setTimeout(() => {
+      setState((prev) => enterFailInterstitial(prev));
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [state.phase]);
+
+  useEffect(() => {
+    if (state.phase !== "failInterstitial") return;
+    const t = window.setTimeout(() => {
+      setState((prev) => finishFailInterstitial(prev));
+    }, 2000);
+    return () => window.clearTimeout(t);
+  }, [state.phase]);
+
   const handleGuess = useCallback((guess: Guess) => {
     setState((prev) => applyGuess(prev, guess));
   }, []);
 
-  const exitRankedSession = useCallback(() => {
-    if (playMode === "ranked" && !rankedSubmittedRef.current) {
-      void submitRankedRun(false, state.drinkCount);
-    } else {
-      setPlayMode("casual");
-      rankedVenueRef.current = null;
-      rankedSubmittedRef.current = false;
-      setView("lobby");
+  const exitToLobbyOrGames = useCallback(() => {
+    if (playMode === "ranked") {
+      if (!rankedSubmittedRef.current) {
+        void submitRankedRun(false, state.drinkCount);
+      } else {
+        setPlayMode("casual");
+        rankedVenueRef.current = null;
+        rankedSubmittedRef.current = false;
+        setView("lobby");
+        setState(initialState());
+      }
+      return;
     }
-  }, [playMode, state.drinkCount, submitRankedRun]);
+    setState(initialState());
+    navigate("/games");
+  }, [playMode, state.drinkCount, submitRankedRun, navigate]);
 
   const canGuess =
     state.modal === "none" &&
-    (state.phase === "roundComplete" ||
-      (state.phase === "prompt" &&
-        (state.current !== null || state.round === 0)));
+    state.phase === "prompt" &&
+    state.current !== null;
 
   const trashTopCard =
     state.discard.length > 0
       ? state.discard[state.discard.length - 1]!
       : null;
 
-  const promptHint =
-    state.phase === "roundComplete"
-      ? "Make your next guess"
-      : state.phase === "prompt"
-        ? "Make your guess"
-        : "Card revealed";
+  const won = state.modal === "win" || state.phase === "won";
+  const isRankedWin = playMode === "ranked" && won;
 
   const rankedOverlays = (
     <>
@@ -168,7 +197,7 @@ export default function RideTheBus() {
       />
       {ranked.isChecking && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/80 text-sm text-white"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 text-sm text-white"
           aria-busy="true"
         >
           Loading…
@@ -201,39 +230,51 @@ export default function RideTheBus() {
       <>
         {rankedOverlays}
         <div
-          className="flex flex-col overflow-hidden px-4"
+          className="flex flex-col overflow-hidden bg-black px-7 text-white"
           style={{ height: shellH }}
         >
-          <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-8">
-            <h1 className="text-3xl font-bold text-foreground">Ride the Bus</h1>
-            <div className="flex flex-col gap-3">
-              <Button size="lg" className="w-full" onClick={beginGame}>
-                Play
-              </Button>
-              <Button
+          <div className="flex flex-shrink-0 items-center pt-1">
+            <button
+              type="button"
+              onClick={() => navigate("/games")}
+              className="flex h-11 w-11 items-center justify-center text-white"
+              aria-label="Exit"
+            >
+              <span className="text-lg font-semibold" aria-hidden>
+                ‹
+              </span>
+            </button>
+          </div>
+
+          <div className="mx-auto flex w-full max-w-lg flex-1 flex-col">
+            <div className="flex flex-1 flex-col items-center justify-center gap-7">
+              <h1 className="text-[2.125rem] font-bold tracking-tight">
+                Ride The Bus
+              </h1>
+              <CardBack
                 size="lg"
-                variant="outline"
-                className="w-full"
-                onClick={() => void ranked.handleRankedClick()}
+                label="Deck"
+                className="shadow-[0_4px_16px_rgba(255,255,255,0.08)]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 pb-9">
+              <button
+                type="button"
+                onClick={beginGame}
+                className="w-full rounded-xl bg-green-500 py-4 text-base font-semibold text-black active:scale-[0.99]"
               >
+                Start Game
+              </button>
+              <SecondaryButton onClick={() => void ranked.handleRankedClick()}>
                 Ranked
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full"
-                onClick={() => setView("rules")}
-              >
+              </SecondaryButton>
+              <SecondaryButton onClick={() => setView("rules")}>
                 Rules
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate("/games")}
-              >
+              </SecondaryButton>
+              <SecondaryButton onClick={() => navigate("/games")}>
                 Exit
-              </Button>
+              </SecondaryButton>
             </div>
           </div>
         </div>
@@ -244,247 +285,54 @@ export default function RideTheBus() {
   if (view === "rules") {
     return (
       <div
-        className="flex flex-col overflow-hidden px-4"
+        className="flex flex-col overflow-hidden bg-black px-4 text-white"
         style={{ height: shellH }}
       >
-        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6">
+        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6 px-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">How to play</h1>
+            <h1 className="text-2xl font-bold">How to play</h1>
             <div className="mt-4">{RULES_COPY}</div>
           </div>
-          <Button size="lg" className="w-full" onClick={() => setView("lobby")}>
+          <button
+            type="button"
+            onClick={() => setView("lobby")}
+            className="w-full rounded-xl bg-green-500 py-4 text-base font-semibold text-black"
+          >
             Return to Lobby
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
-
-  const isRankedWin =
-    playMode === "ranked" && state.modal === "win" && rankedSubmittedRef.current;
 
   return (
     <>
       {rankedOverlays}
-      {state.modal === "win" && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="win-dialog-title"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2
-              id="win-dialog-title"
-              className="text-lg font-semibold text-foreground"
-            >
-              You rode the bus!
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {playMode === "ranked"
-                ? "All four rounds correct. Saving your ranked score…"
-                : "All four rounds correct. Nice run."}
-            </p>
-            {playMode !== "ranked" && (
-              <div className="mt-4 flex flex-col gap-2">
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    setState(startRun(dismissWinModal()));
-                    setView("game");
-                  }}
-                >
-                  Play again
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    setState(dismissWinModal());
-                    setView("lobby");
-                  }}
-                >
-                  Back to lobby
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       <div
-        className="flex min-h-0 flex-col overflow-hidden px-3 pb-1 pt-2"
+        className="flex min-h-0 flex-col overflow-hidden bg-black px-1"
         style={{ height: shellH }}
       >
-        <div className="flex min-h-0 flex-1 flex-col justify-between gap-2">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto py-1">
-            <RideTheBusGameBoard
-              deckCount={state.deck.length}
-              trashCount={state.discard.length}
-              trashTopCard={trashTopCard}
-              drinkCount={state.drinkCount}
-              roundSlots={state.roundSlots}
-            />
-          </div>
-
-          <div className="flex flex-shrink-0 flex-col gap-2 border-t border-border pt-3">
-            <p className="text-center text-sm font-medium text-foreground">
-              {promptHint}
-            </p>
-            <PromptButtons
-              round={state.round}
-              disabled={!canGuess || isRankedWin}
-              onColor={(v) => handleGuess({ round: 0, value: v })}
-              onCompare={(v) => handleGuess({ round: 1, value: v })}
-              onRange={(v) => handleGuess({ round: 2, value: v })}
-              onSuit={(v) => handleGuess({ round: 3, value: v })}
-            />
-          </div>
-
-          <nav
-            className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1 border-t border-border pt-2 pb-1 sm:gap-2"
-            aria-label="Game actions"
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-w-0 flex-1 px-2 sm:px-3"
-              onClick={() => setView("rules")}
-            >
-              Rules
-            </Button>
-            {playMode !== "ranked" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-w-0 flex-1 px-2 sm:px-3"
-                onClick={restartGame}
-              >
-                Restart
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-w-0 flex-1 px-2 sm:px-3"
-              onClick={() => {
-                if (playMode === "ranked") {
-                  exitRankedSession();
-                } else {
-                  navigate("/games");
-                }
-              }}
-            >
-              {playMode === "ranked" ? "Exit ranked" : "Exit"}
-            </Button>
-          </nav>
-        </div>
+        <RideTheBusGameBoard
+          deckCount={state.deck.length}
+          trashTopCard={trashTopCard}
+          roundSlots={state.roundSlots}
+          round={state.round}
+          phase={state.phase}
+          current={state.current}
+          won={won}
+          canGuess={canGuess && !isRankedWin}
+          showNewGame={won && playMode !== "ranked"}
+          selectedGuess={state.selectedGuess}
+          failHeadline={state.failHeadline}
+          failSubtitle={state.failSubtitle}
+          onGuess={handleGuess}
+          onExit={exitToLobbyOrGames}
+          onNewGame={() => {
+            setState(continueSessionAfterWin(state));
+            setView("game");
+          }}
+        />
       </div>
     </>
-  );
-}
-
-function PromptButtons({
-  round,
-  disabled,
-  onColor,
-  onCompare,
-  onRange,
-  onSuit,
-}: {
-  round: 0 | 1 | 2 | 3;
-  disabled: boolean;
-  onColor: (v: ColorGuess) => void;
-  onCompare: (v: CompareGuess) => void;
-  onRange: (v: RangeGuess) => void;
-  onSuit: (v: Suit) => void;
-}) {
-  if (round === 0) {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          size="lg"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onColor("red")}
-        >
-          Red
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onColor("black")}
-        >
-          Black
-        </Button>
-      </div>
-    );
-  }
-
-  if (round === 1) {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          size="lg"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onCompare("higher")}
-        >
-          Higher
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onCompare("lower")}
-        >
-          Lower
-        </Button>
-      </div>
-    );
-  }
-
-  if (round === 2) {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          size="lg"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onRange("inside")}
-        >
-          Inside
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onRange("outside")}
-        >
-          Outside
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {SUITS.map(({ suit, label }) => (
-        <Button
-          key={suit}
-          size="sm"
-          variant="outline"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => onSuit(suit)}
-        >
-          {label}
-        </Button>
-      ))}
-    </div>
   );
 }

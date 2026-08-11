@@ -42,7 +42,7 @@ export function PlayingCard({
   return (
     <div
       className={cn(
-        "relative flex flex-col overflow-hidden rounded-md border border-neutral-300 bg-white shadow-md",
+        "relative flex flex-col overflow-hidden rounded-[10px] border border-black/15 bg-[#e0e0e0] shadow-md",
         sizeClass[size],
         className
       )}

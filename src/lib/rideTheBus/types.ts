@@ -33,7 +33,13 @@ export type Guess =
   | { round: 2; value: RangeGuess }
   | { round: 3; value: Suit };
 
-export type GamePhase = "prompt" | "reveal" | "roundComplete" | "won";
+export type GamePhase =
+  | "prompt"
+  | "reveal"
+  | "roundComplete"
+  | "won"
+  | "failing"
+  | "failInterstitial";
 
 export type ModalKind = "none" | "win";
 
@@ -53,6 +59,10 @@ export type RideTheBusState = {
   modal: ModalKind;
   /** Wrong guesses increment this; resets on Restart / new game from lobby */
   drinkCount: number;
+  /** Last pick — UI lights this up and dims others */
+  selectedGuess: Guess | null;
+  failHeadline: string | null;
+  failSubtitle: string | null;
 };
 
 export function emptyRoundSlots(): RoundSlots {

@@ -3,6 +3,7 @@ import SwiftUI
 struct GamesHubView: View {
     @ObservedObject private var testMode = TestModeStore.shared
     @State private var showSwitchSearch = false
+    @State private var showRideTheBus = false
 
     var body: some View {
         NavigationStack {
@@ -17,9 +18,15 @@ struct GamesHubView: View {
                 }
 
                 if testMode.uiEnabled {
-                    NavigationLink("Ride the Bus") {
-                        RideTheBusView()
+                    Button {
+                        showRideTheBus = true
+                    } label: {
+                        Text("Ride the Bus")
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
+
                     NavigationLink("Mega Toe") {
                         Text("Mega Toe — placeholder board. Port full rules from React in a follow-up.")
                             .padding()
@@ -30,33 +37,9 @@ struct GamesHubView: View {
             .fullScreenCover(isPresented: $showSwitchSearch) {
                 SwitchSearchView()
             }
-        }
-    }
-}
-
-struct RideTheBusView: View {
-    private let ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
-    private let suits = ["♠", "♥", "♦", "♣"]
-    @State private var card = "Tap draw"
-    @State private var round = 0
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Text("Ride the Bus")
-                .font(.largeTitle.bold())
-            Text(card)
-                .font(.system(size: 64, weight: .bold, design: .rounded))
-            Text("Round \(round)")
-                .foregroundStyle(.secondary)
-            Button("Draw") {
-                let r = ranks.randomElement()!
-                let s = suits.randomElement()!
-                card = "\(r)\(s)"
-                round += 1
+            .fullScreenCover(isPresented: $showRideTheBus) {
+                RideTheBusView()
             }
-            .buttonStyle(.borderedProminent)
-            Spacer()
         }
-        .padding()
     }
 }

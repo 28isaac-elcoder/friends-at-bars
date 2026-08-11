@@ -50,6 +50,9 @@ function drawForRound(state: RideTheBusState): RideTheBusState {
       current: retry,
       phase: "prompt",
       lastDrawnRank: rankValue(retry.rank),
+      selectedGuess: null,
+      failHeadline: null,
+      failSubtitle: null,
     };
   }
 
@@ -60,6 +63,9 @@ function drawForRound(state: RideTheBusState): RideTheBusState {
     current: card,
     phase: "prompt",
     lastDrawnRank: rankValue(card.rank),
+    selectedGuess: null,
+    failHeadline: null,
+    failSubtitle: null,
   };
 }
 
@@ -68,7 +74,6 @@ function collectRunCards(state: RideTheBusState): Card[] {
   const out: Card[] = [];
   for (const c of [
     ...state.roundSlots.filter((x): x is Card => x !== null),
-    ...state.runCards,
     ...(state.current ? [state.current] : []),
   ]) {
     if (!seen.has(c.id)) {
@@ -91,22 +96,15 @@ export function initialState(): RideTheBusState {
     lastDrawnRank: null,
     modal: "none",
     drinkCount: 0,
+    selectedGuess: null,
+    failHeadline: null,
+    failSubtitle: null,
   };
 }
 
-function failRun(state: RideTheBusState): RideTheBusState {
-  const failed = collectRunCards(state);
-  return startRun({
-    ...state,
-    drinkCount: state.drinkCount + 1,
-    discard: [...state.discard, ...failed],
-    modal: "none",
-  });
-}
-
-/** Begin or restart the four-round run from round 0 */
+/** Begin or restart the four-round run from round 0 (keeps deck/discard). */
 export function startRun(state: RideTheBusState): RideTheBusState {
-  const base: RideTheBusState = {
+  return {
     ...state,
     current: null,
     roundSlots: emptyRoundSlots(),
@@ -114,34 +112,115 @@ export function startRun(state: RideTheBusState): RideTheBusState {
     runCards: [],
     phase: "prompt",
     modal: "none",
+    selectedGuess: null,
+    failHeadline: null,
+    failSubtitle: null,
   };
-  return base;
 }
 
+/** Fresh 52 from lobby. */
+export function startFreshSession(): RideTheBusState {
+  return drawForRound(startRun(initialState()));
+}
+
+/** Win → next run keeps remaining deck/trash for this visit. */
+export function continueSessionAfterWin(state: RideTheBusState): RideTheBusState {
+  return drawForRound(
+    startRun({
+      ...state,
+      modal: "none",
+    })
+  );
+}
+
+/** @deprecated use continueSessionAfterWin / startFreshSession */
 export function dismissWinModal(): RideTheBusState {
   return initialState();
 }
 
-export function submitGuess(
+/**
+ * Synchronous guess evaluation for Cap UI.
+ * Wrong answers enter `failing` (short banner) — call `enterFailInterstitial`
+ * then `finishFailInterstitial` from the UI timers.
+ */
+export function applyGuess(
   state: RideTheBusState,
   guess: Guess
 ): RideTheBusState {
-  if (!state.current || state.modal !== "none") return state;
-  if (guess.round !== state.round) return state;
-
-  if (state.phase === "prompt") {
-    const reveal: RideTheBusState = { ...state, phase: "reveal" };
-    const correct = isCorrectGuess(
-      guess,
-      state.round,
-      state.runCards,
-      state.current
-    );
-    if (!correct) return failRun(reveal);
-    return afterCorrectGuess(reveal);
+  if (state.modal !== "none") return state;
+  if (
+    state.phase === "failing" ||
+    state.phase === "failInterstitial" ||
+    state.phase === "won"
+  ) {
+    return state;
   }
 
-  return state;
+  let working = state;
+
+  if (state.phase === "roundComplete") {
+    if (guess.round !== state.round) return state;
+    working = drawForRound({ ...state, phase: "prompt" });
+  } else if (
+    state.phase === "prompt" &&
+    state.round === 0 &&
+    state.current === null
+  ) {
+    working = drawForRound(state);
+  }
+
+  if (!working.current || guess.round !== working.round) return working;
+
+  const correct = isCorrectGuess(
+    guess,
+    working.round,
+    working.runCards,
+    working.current
+  );
+
+  if (!correct) {
+    return {
+      ...working,
+      selectedGuess: guess,
+      phase: "failing",
+      failHeadline: "Engine Overheated!",
+      failSubtitle: null,
+    };
+  }
+
+  return afterCorrectGuess({
+    ...working,
+    selectedGuess: guess,
+    phase: "reveal",
+  });
+}
+
+export function enterFailInterstitial(state: RideTheBusState): RideTheBusState {
+  if (state.phase !== "failing") return state;
+  const failed = collectRunCards(state);
+  return {
+    ...state,
+    drinkCount: state.drinkCount + 1,
+    discard: [...state.discard, ...failed],
+    current: null,
+    roundSlots: emptyRoundSlots(),
+    runCards: [],
+    round: 0,
+    selectedGuess: null,
+    lastDrawnRank: null,
+    phase: "failInterstitial",
+    failHeadline: "Engine Overheated!",
+    failSubtitle: "Sit tight, take a drink, try again.",
+  };
+}
+
+export function finishFailInterstitial(state: RideTheBusState): RideTheBusState {
+  if (state.phase !== "failInterstitial") return state;
+  return drawForRound({
+    ...state,
+    failHeadline: null,
+    failSubtitle: null,
+  });
 }
 
 function afterCorrectGuess(state: RideTheBusState): RideTheBusState {
@@ -161,43 +240,23 @@ function afterCorrectGuess(state: RideTheBusState): RideTheBusState {
       current: null,
       phase: "won",
       modal: "win",
+      selectedGuess: null,
+      failHeadline: null,
+      failSubtitle: null,
     };
   }
 
   const nextRound = (state.round + 1) as 0 | 1 | 2 | 3;
-  return {
+  const advanced = {
     ...state,
     runCards,
     roundSlots,
     round: nextRound,
-    phase: "roundComplete",
+    phase: "roundComplete" as const,
     current: null,
+    selectedGuess: null,
   };
-}
-
-/** After a correct guess: next-round button draws a new card then evaluates that guess */
-export function applyGuess(
-  state: RideTheBusState,
-  guess: Guess
-): RideTheBusState {
-  if (state.modal !== "none") return state;
-
-  if (state.phase === "roundComplete") {
-    if (guess.round !== state.round) return state;
-    const drawn = drawForRound({ ...state, phase: "prompt" });
-    return submitGuess(drawn, guess);
-  }
-
-  if (
-    state.phase === "prompt" &&
-    state.round === 0 &&
-    state.current === null
-  ) {
-    const drawn = drawForRound(state);
-    return submitGuess(drawn, guess);
-  }
-
-  return submitGuess(state, guess);
+  return drawForRound({ ...advanced, phase: "prompt" });
 }
 
 export const ROUND_LABELS = [
