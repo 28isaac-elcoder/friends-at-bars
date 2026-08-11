@@ -395,7 +395,7 @@ export function RideTheBusGameBoard({
         <div className="mt-1.5 px-5 text-center">
           <p className="text-sm font-bold text-[#ff736b]">{failHeadline}</p>
           {failSubtitle && (
-            <p className="mt-0.5 text-xs font-semibold text-[#ff736b]/failSubtitle}</p>
+            <p className="mt-0.5 text-xs font-semibold text-[#ff736b]">{failSubtitle}</p>
           )}
         </div>
       )}
