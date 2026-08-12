@@ -1,31 +1,88 @@
 import SwiftUI
 
 /// Priority deals carousel (web Activities `BarDealsCarousel` parity) — dark theme.
-/// Auto-cycles every few seconds; supports left/right swipe; resumes auto-cycle after swiping.
+/// Shows a "Hot Deals" placeholder for a short beat, then crossfades into the cycling deals.
 struct PriorityDealsCarousel: View {
     let items: [CatalogListing]
     @State private var index = 0
     @State private var detailItem: CatalogListing?
     @State private var cycleToken = UUID()
+    @State private var showPlaceholder = true
     private let rotateSeconds: TimeInterval = 3
+    private let placeholderSeconds: TimeInterval = 1.6
 
     private static let fullDayNames = [
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
     ]
 
+    private static let cardFill = Color(red: 0.18, green: 0.16, blue: 0.12)
+    private static let cardStroke = Color(red: 0.45, green: 0.38, blue: 0.22).opacity(0.6)
+    private static let gold = Color(red: 0.85, green: 0.72, blue: 0.45)
+
     var body: some View {
-        Group {
-            if items.isEmpty {
-                EmptyView()
-            } else {
+        ZStack {
+            if showPlaceholder {
+                hotDealsPlaceholder
+                    .transition(.opacity)
+            } else if !items.isEmpty {
                 carouselBody
+                    .transition(.opacity)
             }
         }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: (showPlaceholder || !items.isEmpty) ? 118 : 0,
+            alignment: .top
+        )
+        .animation(.easeInOut(duration: 0.45), value: showPlaceholder)
+        .animation(.easeInOut(duration: 0.45), value: items.isEmpty)
         .sheet(item: $detailItem) { item in
             PriorityDealDetailSheet(item: item)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .onAppear {
+            index = 0
+        }
+        .onChange(of: items.map(\.id)) { _, _ in
+            index = 0
+            cycleToken = UUID()
+        }
+        .task {
+            guard showPlaceholder else { return }
+            try? await Task.sleep(nanoseconds: UInt64(placeholderSeconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.45)) {
+                showPlaceholder = false
+            }
+        }
+    }
+
+    private var hotDealsPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("BAR DEAL")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Self.gold)
+                .tracking(0.6)
+            Text("Hot Deals")
+                .font(.title3.bold())
+                .foregroundStyle(.white)
+            Text(" ")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.7))
+                .accessibilityHidden(true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Self.cardFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Self.cardStroke, lineWidth: 1)
+                )
+        )
+        .accessibilityLabel("Hot Deals loading")
     }
 
     private var current: CatalogListing { items[index % items.count] }
@@ -36,7 +93,7 @@ struct PriorityDealsCarousel: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(carouselLabel(for: current.type_labels))
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color(red: 0.85, green: 0.72, blue: 0.45))
+                        .foregroundStyle(Self.gold)
                         .tracking(0.6)
                     HStack(spacing: 6) {
                         ForEach(current.type_labels, id: \.self) { label in
@@ -77,13 +134,13 @@ struct PriorityDealsCarousel: View {
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(red: 0.18, green: 0.16, blue: 0.12))
+                .fill(Self.cardFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(red: 0.45, green: 0.38, blue: 0.22).opacity(0.6), lineWidth: 1)
+                        .strokeBorder(Self.cardStroke, lineWidth: 1)
                 )
         )
         .contentShape(Rectangle())
@@ -91,17 +148,11 @@ struct PriorityDealsCarousel: View {
             detailItem = current
         }
         .simultaneousGesture(swipeGesture)
-        .onAppear { index = 0 }
-        .onChange(of: items.map(\.id)) { _, _ in
-            index = 0
-            cycleToken = UUID()
-        }
-        .task(id: "\(items.count)-\(cycleToken.uuidString)") {
-            guard items.count > 1 else { return }
+        .task(id: "\(items.count)-\(cycleToken.uuidString)-\(showPlaceholder)") {
+            guard !showPlaceholder, items.count > 1 else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(rotateSeconds * 1_000_000_000))
-                guard !Task.isCancelled, items.count > 1 else { break }
-                // Don't auto-advance while a detail sheet is open.
+                guard !Task.isCancelled, !showPlaceholder, items.count > 1 else { break }
                 guard detailItem == nil else { continue }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     index = (index + 1) % items.count
@@ -116,7 +167,6 @@ struct PriorityDealsCarousel: View {
                 guard items.count > 1 else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
-                // Prefer horizontal swipes so vertical ScrollView still works.
                 guard abs(dx) > abs(dy), abs(dx) > 40 else { return }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     if dx < 0 {
@@ -125,7 +175,6 @@ struct PriorityDealsCarousel: View {
                         index = (index - 1 + items.count) % items.count
                     }
                 }
-                // Restart auto-cycle from a fresh interval after manual swipe.
                 cycleToken = UUID()
             }
     }
@@ -144,7 +193,6 @@ struct PriorityDealsCarousel: View {
         return Color(red: 0.9, green: 0.75, blue: 0.35)
     }
 
-    /// e.g. "Thursday  7pm-Close" or "Thu, Fri  8pm-Close"
     private func dayTimeLabel(_ item: CatalogListing) -> String? {
         let days = item.days_of_week.sorted()
         let dayPart: String

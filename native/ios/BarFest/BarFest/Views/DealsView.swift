@@ -4,6 +4,11 @@ struct DealsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var dayFilter: DayFilter = .today
     @State private var areaFilter: CampusArea?
+    @State private var venueSearch = ""
+
+    private var searchQuery: String {
+        venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private var filteredListings: [CatalogListing] {
         appModel.listings
@@ -16,6 +21,11 @@ struct DealsView: View {
                 }
                 if let areaFilter {
                     if listing.area != areaFilter.rawValue {
+                        return false
+                    }
+                }
+                if !searchQuery.isEmpty {
+                    if !listing.venue_name.localizedCaseInsensitiveContains(searchQuery) {
                         return false
                     }
                 }
@@ -67,17 +77,50 @@ struct DealsView: View {
                             }
                         }
                     }
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search bars", text: $venueSearch)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                        if !venueSearch.isEmpty {
+                            Button {
+                                venueSearch = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear search")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
 
                 if filteredListings.isEmpty {
-                    ContentUnavailableView(
-                        "No deals",
-                        systemImage: "tag",
-                        description: Text("Try another day or area, or pull to refresh.")
-                    )
+                    if !searchQuery.isEmpty {
+                        ContentUnavailableView(
+                            "No Deals Found From That Search",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try another bar name, day, or area.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "No deals",
+                            systemImage: "tag",
+                            description: Text("Try another day or area, or pull to refresh.")
+                        )
+                    }
                 } else {
                     List(filteredListings) { item in
                         VStack(alignment: .leading, spacing: 6) {

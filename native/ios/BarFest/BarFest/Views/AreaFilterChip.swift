@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Shared area filter chip with vibrant campus colors.
+/// Shared area filter chip — outline + colored text until selected, then filled.
 struct AreaFilterChip: View {
     let area: CampusArea
     let selected: Bool
@@ -12,12 +12,14 @@ struct AreaFilterChip: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(area.accentColor.opacity(selected ? 1.0 : 0.72))
-                .foregroundStyle(.white)
-                .clipShape(Capsule())
+                .foregroundStyle(selected ? Color.white : area.accentColor)
+                .background(
+                    Capsule()
+                        .fill(selected ? area.accentColor : Color.clear)
+                )
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 2)
+                        .strokeBorder(area.accentColor, lineWidth: selected ? 0 : 1.5)
                 )
         }
         .buttonStyle(.plain)

@@ -14,8 +14,9 @@ struct ActivitiesView: View {
             .sorted { $0.priority < $1.priority }
     }
 
+    /// Bars with live attendance only (0 people hidden).
     private var filteredVenues: [CatalogVenue] {
-        var list = appModel.venues
+        var list = appModel.venues.filter { appModel.venueCounts[$0.name, default: 0] > 0 }
         if let areaFilter {
             list = list.filter { $0.area == areaFilter.rawValue }
         }
@@ -93,56 +94,63 @@ struct ActivitiesView: View {
                         Text(areaFilter == nil ? "Bars" : areaFilter!.rawValue)
                             .font(.headline)
                         Spacer(minLength: 8)
-                        Button {
-                            populationSort.toggle()
-                        } label: {
-                            Label(populationSort.rawValue, systemImage: "arrow.up.arrow.down")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.1))
-                                .clipShape(Capsule())
+                        if showBarAttendance, !filteredVenues.isEmpty {
+                            Button {
+                                populationSort.toggle()
+                            } label: {
+                                Label(populationSort.rawValue, systemImage: "arrow.up.arrow.down")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(Color.white.opacity(0.1))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Toggle population sort")
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!showBarAttendance)
-                        .accessibilityLabel("Toggle population sort")
                     }
 
                     if showBarAttendance {
-                        LazyVStack(spacing: 0) {
-                            ForEach(filteredVenues) { venue in
-                                Button {
-                                    selectedVenue = venue
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(venue.name)
-                                                .font(.body.weight(.medium))
-                                                .foregroundStyle(.primary)
-                                            Text(venue.area)
-                                                .font(.caption2)
+                        if filteredVenues.isEmpty {
+                            ActivitiesNoActivityEmptyState(areaName: areaFilter?.rawValue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 36)
+                        } else {
+                            LazyVStack(spacing: 0) {
+                                ForEach(filteredVenues) { venue in
+                                    Button {
+                                        selectedVenue = venue
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(venue.name)
+                                                    .font(.body.weight(.medium))
+                                                    .foregroundStyle(.primary)
+                                                Text(venue.area)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            Spacer()
+                                            Text("\(appModel.venueCounts[venue.name, default: 0])")
+                                                .font(.body.monospacedDigit().weight(.semibold))
                                                 .foregroundStyle(.secondary)
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.tertiary)
                                         }
-                                        Spacer()
-                                        Text("\(appModel.venueCounts[venue.name, default: 0])")
-                                            .font(.body.monospacedDigit().weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 14)
+                                        .contentShape(Rectangle())
                                     }
-                                    .padding(.vertical, 12)
-                                    .padding(.horizontal, 14)
-                                    .contentShape(Rectangle())
+                                    .buttonStyle(.plain)
+                                    Divider().opacity(0.35)
                                 }
-                                .buttonStyle(.plain)
-                                Divider().opacity(0.35)
                             }
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                            )
                         }
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        )
                     } else {
                         ActivitiesLocationInlineGate()
                     }
@@ -190,6 +198,58 @@ struct ActivitiesView: View {
             await appModel.refreshHeadcounts(source: "activities-pull")
         } else {
             await appModel.refreshCatalog()
+        }
+    }
+}
+
+/// Empty state when no bars currently have live attendance (optionally scoped to an area).
+private struct ActivitiesNoActivityEmptyState: View {
+    var areaName: String?
+
+    private var message: String {
+        if let areaName, !areaName.isEmpty {
+            return "No Activity in \(areaName)"
+        }
+        return "No Activity Yet"
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            SpilledCupGlyph()
+                .frame(width: 88, height: 72)
+                .foregroundStyle(.white)
+            Text(message)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Simple tipped-cup illustration inspired by the product empty state.
+private struct SpilledCupGlyph: View {
+    var body: some View {
+        ZStack {
+            // Spill puddle
+            Capsule()
+                .fill(Color.white.opacity(0.9))
+                .frame(width: 52, height: 14)
+                .offset(x: 18, y: 26)
+            // Cup body (tipped)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(Color.white, lineWidth: 3)
+                .frame(width: 36, height: 44)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(Color.white, lineWidth: 2.5)
+                        .frame(width: 22, height: 10)
+                        .offset(y: -22)
+                )
+                .rotationEffect(.degrees(-55))
+                .offset(x: -10, y: -2)
         }
     }
 }
