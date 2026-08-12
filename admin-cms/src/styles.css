@@ -309,7 +309,92 @@ select {
 
 .listings-toolbar {
   margin-bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.65rem;
+}
+
+.listings-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  min-width: min(100%, 11rem);
+}
+
+.priority-mode-btn.active {
+  background: #1f3d2b;
+  color: #fff;
+  border-color: #1f3d2b;
+}
+
+.btn-add-deal {
+  width: 100%;
+  background: #111 !important;
+  color: #fff !important;
+  border-color: #111 !important;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+}
+
+.btn-add-deal:disabled {
+  opacity: 0.65;
+}
+
+.draft-priority-toggle {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.priority-rank-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.listing-card--priority {
+  position: relative;
+  padding-top: 2.4rem;
+}
+
+.listing-card--priority .priority-rank-controls {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  margin-left: 0;
+}
+
+.priority-rank-btn {
+  min-width: 2rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.priority-rank-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.priority-rank-num {
+  min-width: 1.25rem;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-priority-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+
+.listing-card-priority-toggle {
+  margin-bottom: 0.35rem;
 }
 
 .listings-cards {
@@ -428,6 +513,10 @@ select {
   .listings-toolbar select,
   .listings-toolbar button {
     width: 100%;
+  }
+
+  .priority-rank-controls {
+    width: auto;
   }
 
   .listings-table-wrap {

@@ -49,22 +49,89 @@ function toggleType(labels: string[], label: string): string[] {
     : [...labels, label];
 }
 
+/** Lower number = higher rank (1 is top). 0 = not prioritized. */
+function prioritizedSorted(rows: CatalogListing[]): CatalogListing[] {
+  return rows
+    .filter((r) => r.priority > 0)
+    .sort((a, b) => a.priority - b.priority || a.venue_name.localeCompare(b.venue_name));
+}
+
+function nextPriorityValue(rows: CatalogListing[]): number {
+  const max = rows.reduce((m, r) => (r.priority > m ? r.priority : m), 0);
+  return max + 1;
+}
+
 type PatchFn = (id: string, patch: Partial<Draft>) => void;
+
+function PriorityRankControls({
+  priority,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}: {
+  priority: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}) {
+  return (
+    <div className="priority-rank-controls" title="Priority rank (1 = highest)">
+      <button
+        type="button"
+        className="priority-rank-btn"
+        disabled={!canMoveDown}
+        onClick={onMoveDown}
+        aria-label="Lower priority"
+      >
+        ↓
+      </button>
+      <span className="priority-rank-num">{priority}</span>
+      <button
+        type="button"
+        className="priority-rank-btn"
+        disabled={!canMoveUp}
+        onClick={onMoveUp}
+        aria-label="Raise priority"
+      >
+        ↑
+      </button>
+    </div>
+  );
+}
 
 /** Stacked editable card — primary mobile editing surface for Deals/Events. */
 function ListingCard({
   row,
   venues,
+  maxPriority,
   onPatch,
   onRemove,
+  onTogglePriority,
+  onMovePriority,
 }: {
   row: CatalogListing;
   venues: CatalogVenue[];
+  maxPriority: number;
   onPatch: PatchFn;
   onRemove: (id: string) => void;
+  onTogglePriority: (id: string, enabled: boolean) => void;
+  onMovePriority: (id: string, direction: "up" | "down") => void;
 }) {
+  const isPrioritized = row.priority > 0;
+
   return (
-    <li className="listing-card">
+    <li className={`listing-card${isPrioritized ? " listing-card--priority" : ""}`}>
+      {isPrioritized && (
+        <PriorityRankControls
+          priority={row.priority}
+          canMoveUp={row.priority > 1}
+          canMoveDown={row.priority < maxPriority}
+          onMoveUp={() => onMovePriority(row.id, "up")}
+          onMoveDown={() => onMovePriority(row.id, "down")}
+        />
+      )}
       <label>
         Venue
         <select
@@ -163,16 +230,14 @@ function ListingCard({
         </div>
       </fieldset>
       <div className="listing-card-meta">
-        <label>
-          Priority
+        <label className="inline-check listing-card-priority-toggle">
           <input
-            type="number"
-            defaultValue={row.priority}
-            onBlur={(e) => {
-              const n = Number(e.target.value);
-              if (n !== row.priority) onPatch(row.id, { priority: n });
-            }}
+            type="checkbox"
+            checked={isPrioritized}
+            onChange={(e) => onTogglePriority(row.id, e.target.checked)}
           />
+          Priority
+          {isPrioritized ? ` (#${row.priority})` : ""}
         </label>
         <label className="inline-check listing-card-active">
           <input
@@ -198,8 +263,11 @@ export function ListingsPanel() {
   const [rows, setRows] = useState<CatalogListing[]>([]);
   const [venues, setVenues] = useState<CatalogVenue[]>([]);
   const [draft, setDraft] = useState<Draft>(blank());
+  const [draftPriorityOn, setDraftPriorityOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterArea, setFilterArea] = useState<string>("");
+  const [filterDay, setFilterDay] = useState<string>("");
+  const [priorityMode, setPriorityMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -232,17 +300,62 @@ export function ListingsPanel() {
   }, [load]);
 
   const visible = useMemo(() => {
-    if (!filterArea) return rows;
-    return rows.filter((r) => r.area === filterArea);
-  }, [rows, filterArea]);
+    let list = rows;
+    if (filterArea) {
+      list = list.filter((r) => r.area === filterArea);
+    }
+    if (filterDay !== "") {
+      const day = Number(filterDay);
+      list = list.filter(
+        (r) => r.days_of_week.length === 0 || r.days_of_week.includes(day)
+      );
+    }
+    if (priorityMode) {
+      list = list.filter((r) => r.priority > 0);
+    }
+    return [...list].sort((a, b) => {
+      const aP = a.priority > 0;
+      const bP = b.priority > 0;
+      if (aP && bP) {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+      } else if (aP !== bP) {
+        return aP ? -1 : 1;
+      }
+      if (a.area !== b.area) return a.area.localeCompare(b.area);
+      return a.venue_name.localeCompare(b.venue_name);
+    });
+  }, [rows, filterArea, filterDay, priorityMode]);
+
+  const maxPriority = useMemo(() => {
+    return rows.reduce((m, r) => (r.priority > m ? r.priority : m), 0);
+  }, [rows]);
+
+  async function applyPatches(
+    updates: { id: string; patch: Partial<Draft> }[]
+  ) {
+    setError(null);
+    for (const { id, patch } of updates) {
+      const { error: err } = await supabase
+        .from("catalog_listings")
+        .update(patch)
+        .eq("id", id);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+    }
+    await load();
+  }
 
   async function createRow(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setMsg(null);
+    const priority = draftPriorityOn ? nextPriorityValue(rows) : 0;
     const payload = {
       ...draft,
+      priority,
       listing_kind: kindFromLabels(draft.type_labels),
     };
     const { error: err } = await supabase.from("catalog_listings").insert(payload);
@@ -252,28 +365,71 @@ export function ListingsPanel() {
       return;
     }
     setDraft(blank(draft.venue_name));
+    setDraftPriorityOn(false);
     setMsg("Row added");
     await load();
   }
 
   async function patchRow(id: string, patch: Partial<Draft>) {
-    setError(null);
-    const { error: err } = await supabase
-      .from("catalog_listings")
-      .update(patch)
-      .eq("id", id);
-    if (err) setError(err.message);
-    else await load();
+    await applyPatches([{ id, patch }]);
+  }
+
+  async function togglePriority(id: string, enabled: boolean) {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    if (enabled) {
+      if (row.priority > 0) return;
+      await applyPatches([{ id, patch: { priority: nextPriorityValue(rows) } }]);
+      return;
+    }
+    if (row.priority <= 0) return;
+    // Clear this deal and renumber remaining priorities 1…n with no gaps.
+    const remaining = prioritizedSorted(rows.filter((r) => r.id !== id));
+    const updates: { id: string; patch: Partial<Draft> }[] = [
+      { id, patch: { priority: 0 } },
+      ...remaining.map((r, i) => ({
+        id: r.id,
+        patch: { priority: i + 1 } as Partial<Draft>,
+      })),
+    ];
+    await applyPatches(updates);
+  }
+
+  async function movePriority(id: string, direction: "up" | "down") {
+    const row = rows.find((r) => r.id === id);
+    if (!row || row.priority <= 0) return;
+    const targetRank = direction === "up" ? row.priority - 1 : row.priority + 1;
+    if (targetRank < 1) return;
+    const other = rows.find((r) => r.priority === targetRank);
+    if (!other) return;
+    await applyPatches([
+      { id: row.id, patch: { priority: targetRank } },
+      { id: other.id, patch: { priority: row.priority } },
+    ]);
   }
 
   async function removeRow(id: string) {
     if (!confirm("Delete this listing?")) return;
+    const row = rows.find((r) => r.id === id);
     const { error: err } = await supabase
       .from("catalog_listings")
       .delete()
       .eq("id", id);
-    if (err) setError(err.message);
-    else await load();
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    if (row && row.priority > 0) {
+      const remaining = prioritizedSorted(rows.filter((r) => r.id !== id));
+      await applyPatches(
+        remaining.map((r, i) => ({
+          id: r.id,
+          patch: { priority: i + 1 },
+        }))
+      );
+    } else {
+      await load();
+    }
   }
 
   return (
@@ -281,13 +437,14 @@ export function ListingsPanel() {
       <h2>Deals &amp; Events</h2>
       <p className="muted listings-help-desktop">
         Spreadsheet columns: venue, title, time, details, area, types, days
-        (0=Sun…6=Sat), priority, active.
+        (0=Sun…6=Sat), priority (1 = highest; 0 = none), active.
       </p>
       <p className="muted listings-help-mobile">
-        Edit each deal as a card. Filter by area, then tap fields to update.
+        Edit each deal as a card. Filter by area or day, then tap fields to
+        update. Use Priority mode to reorder featured deals.
       </p>
 
-      <div className="listings-toolbar row-actions">
+      <div className="listings-toolbar">
         <label>
           Filter area{" "}
           <select
@@ -302,6 +459,27 @@ export function ListingsPanel() {
             ))}
           </select>
         </label>
+        <label>
+          Filter day{" "}
+          <select
+            value={filterDay}
+            onChange={(e) => setFilterDay(e.target.value)}
+          >
+            <option value="">All days</option>
+            {DAY_LABELS.map((label, day) => (
+              <option key={label} value={String(day)}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className={`priority-mode-btn${priorityMode ? " active" : ""}`}
+          onClick={() => setPriorityMode((v) => !v)}
+        >
+          Priority mode
+        </button>
         <span className="muted">{visible.length} rows</span>
       </div>
 
@@ -361,15 +539,16 @@ export function ListingsPanel() {
             onChange={(e) => setDraft({ ...draft, details: e.target.value })}
           />
         </label>
-        <label>
-          Priority
+        <label className="full inline-check draft-priority-toggle">
           <input
-            type="number"
-            value={draft.priority}
-            onChange={(e) =>
-              setDraft({ ...draft, priority: Number(e.target.value) })
-            }
+            type="checkbox"
+            checked={draftPriorityOn}
+            onChange={(e) => setDraftPriorityOn(e.target.checked)}
           />
+          Priority
+          {draftPriorityOn
+            ? ` (will be #${nextPriorityValue(rows)})`
+            : " (off)"}
         </label>
         <label>
           Types
@@ -411,11 +590,11 @@ export function ListingsPanel() {
             ))}
           </div>
         </label>
-        <label className="full">
-          <button type="submit" disabled={busy}>
-            {busy ? "Adding…" : "Add listing row"}
+        <div className="full">
+          <button type="submit" className="btn-add-deal" disabled={busy}>
+            {busy ? "Adding…" : "Add a Deal"}
           </button>
-        </label>
+        </div>
       </form>
 
       {error && <p className="error">{error}</p>}
@@ -433,7 +612,7 @@ export function ListingsPanel() {
               <th>Area</th>
               <th>Types</th>
               <th>Days</th>
-              <th>Pri</th>
+              <th>Priority</th>
               <th>On</th>
               <th />
             </tr>
@@ -546,16 +725,27 @@ export function ListingsPanel() {
                   </div>
                 </td>
                 <td>
-                  <input
-                    type="number"
-                    defaultValue={r.priority}
-                    className="col-pri"
-                    onBlur={(e) => {
-                      const n = Number(e.target.value);
-                      if (n !== r.priority)
-                        void patchRow(r.id, { priority: n });
-                    }}
-                  />
+                  <div className="table-priority-cell">
+                    <label className="inline-check">
+                      <input
+                        type="checkbox"
+                        checked={r.priority > 0}
+                        onChange={(e) =>
+                          void togglePriority(r.id, e.target.checked)
+                        }
+                      />
+                      On
+                    </label>
+                    {r.priority > 0 && (
+                      <PriorityRankControls
+                        priority={r.priority}
+                        canMoveUp={r.priority > 1}
+                        canMoveDown={r.priority < maxPriority}
+                        onMoveUp={() => void movePriority(r.id, "up")}
+                        onMoveDown={() => void movePriority(r.id, "down")}
+                      />
+                    )}
+                  </div>
                 </td>
                 <td>
                   <input
@@ -591,8 +781,11 @@ export function ListingsPanel() {
               key={r.id}
               row={r}
               venues={venues}
+              maxPriority={maxPriority}
               onPatch={(id, patch) => void patchRow(id, patch)}
               onRemove={(id) => void removeRow(id)}
+              onTogglePriority={(id, enabled) => void togglePriority(id, enabled)}
+              onMovePriority={(id, dir) => void movePriority(id, dir)}
             />
           ))
         )}
