@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CatalogListing, CatalogVenue, supabase } from "./supabase";
+import {
+  CatalogArea,
+  CatalogListing,
+  CatalogVenue,
+  supabase,
+} from "./supabase";
 
-const AREAS = [
-  "North Campus",
-  "South Campus",
-  "Short North",
-  "Grandview / Breweries",
-  "Test Locations",
-];
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TYPE_OPTIONS = ["Drink Special", "Food Special", "Event"];
 
@@ -105,6 +103,7 @@ function PriorityRankControls({
 function ListingCard({
   row,
   venues,
+  areaOptions,
   maxPriority,
   onPatch,
   onRemove,
@@ -113,6 +112,7 @@ function ListingCard({
 }: {
   row: CatalogListing;
   venues: CatalogVenue[];
+  areaOptions: string[];
   maxPriority: number;
   onPatch: PatchFn;
   onRemove: (id: string) => void;
@@ -182,7 +182,7 @@ function ListingCard({
           value={row.area}
           onChange={(e) => onPatch(row.id, { area: e.target.value })}
         >
-          {AREAS.map((a) => (
+          {areaOptions.map((a) => (
             <option key={a} value={a}>
               {a}
             </option>
@@ -262,6 +262,7 @@ function ListingCard({
 export function ListingsPanel() {
   const [rows, setRows] = useState<CatalogListing[]>([]);
   const [venues, setVenues] = useState<CatalogVenue[]>([]);
+  const [areas, setAreas] = useState<CatalogArea[]>([]);
   const [draft, setDraft] = useState<Draft>(blank());
   const [draftPriorityOn, setDraftPriorityOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,7 +273,7 @@ export function ListingsPanel() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [listingsRes, venuesRes] = await Promise.all([
+    const [listingsRes, venuesRes, areasRes] = await Promise.all([
       supabase
         .from("catalog_listings")
         .select("*")
@@ -282,6 +283,10 @@ export function ListingsPanel() {
         .from("catalog_venues")
         .select("*")
         .order("name", { ascending: true }),
+      supabase
+        .from("catalog_areas")
+        .select("*")
+        .order("sort_order", { ascending: true }),
     ]);
     if (listingsRes.error) setError(listingsRes.error.message);
     else {
@@ -293,11 +298,32 @@ export function ListingsPanel() {
       setVenues(v);
       setDraft((d) => (d.venue_name ? d : blank(v[0]?.name ?? "")));
     }
+    if (!areasRes.error) {
+      setAreas((areasRes.data ?? []) as CatalogArea[]);
+    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const areaNames = useMemo(() => {
+    const names = new Set(areas.map((a) => a.long_name));
+    for (const r of rows) {
+      if (r.area) names.add(r.area);
+    }
+    return [...names].sort();
+  }, [areas, rows]);
+
+  function areasForVenue(venueName: string): string[] {
+    const v = venues.find((x) => x.name === venueName);
+    if (!v?.geography_id) return areaNames;
+    const scoped = areas
+      .filter((a) => a.geography_id === v.geography_id)
+      .map((a) => a.long_name);
+    if (v.area && !scoped.includes(v.area)) scoped.push(v.area);
+    return scoped.length ? scoped : areaNames;
+  }
 
   const visible = useMemo(() => {
     let list = rows;
@@ -452,7 +478,7 @@ export function ListingsPanel() {
             onChange={(e) => setFilterArea(e.target.value)}
           >
             <option value="">All areas</option>
-            {AREAS.map((a) => (
+            {areaNames.map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
@@ -508,7 +534,7 @@ export function ListingsPanel() {
             value={draft.area}
             onChange={(e) => setDraft({ ...draft, area: e.target.value })}
           >
-            {AREAS.map((a) => (
+            {areasForVenue(draft.venue_name).map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>
@@ -671,7 +697,7 @@ export function ListingsPanel() {
                       void patchRow(r.id, { area: e.target.value })
                     }
                   >
-                    {AREAS.map((a) => (
+                    {areasForVenue(r.venue_name).map((a) => (
                       <option key={a} value={a}>
                         {a}
                       </option>
@@ -780,7 +806,7 @@ export function ListingsPanel() {
             <ListingCard
               key={r.id}
               row={r}
-              venues={venues}
+              areaOptions={areasForVenue(r.venue_name)}
               maxPriority={maxPriority}
               onPatch={(id, patch) => void patchRow(id, patch)}
               onRemove={(id) => void removeRow(id)}

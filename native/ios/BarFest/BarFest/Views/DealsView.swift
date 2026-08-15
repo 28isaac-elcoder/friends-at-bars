@@ -3,7 +3,7 @@ import SwiftUI
 struct DealsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var dayFilter: DayFilter = .today
-    @State private var areaFilter: CampusArea?
+    @State private var areaFilter: String?
     @State private var venueSearch = ""
 
     private var searchQuery: String {
@@ -11,7 +11,7 @@ struct DealsView: View {
     }
 
     private var filteredListings: [CatalogListing] {
-        appModel.listings
+        appModel.scopedListings
             .filter { listing in
                 if dayFilter != .all {
                     let day = dayFilter.rawValue
@@ -20,7 +20,7 @@ struct DealsView: View {
                     }
                 }
                 if let areaFilter {
-                    if listing.area != areaFilter.rawValue {
+                    if listing.area != areaFilter {
                         return false
                     }
                 }
@@ -64,15 +64,16 @@ struct DealsView: View {
                     }
 
                     HorizontalChipScroll {
-                        ForEach(CampusArea.allCases) { area in
+                        ForEach(appModel.scopedAreas) { area in
                             AreaFilterChip(
-                                area: area,
-                                selected: areaFilter == area
+                                title: area.short_name,
+                                accent: area.accentColor,
+                                selected: areaFilter == area.long_name
                             ) {
-                                if areaFilter == area {
+                                if areaFilter == area.long_name {
                                     areaFilter = nil
                                 } else {
-                                    areaFilter = area
+                                    areaFilter = area.long_name
                                 }
                             }
                         }
@@ -176,6 +177,9 @@ struct DealsView: View {
             }
             .onChange(of: dayFilter) { _, _ in logDealsDiagnostics(event: "day-filter") }
             .onChange(of: areaFilter) { _, _ in logDealsDiagnostics(event: "area-filter") }
+            .onChange(of: appModel.resolvedGeography?.id) { _, _ in
+                areaFilter = nil
+            }
         }
     }
 
@@ -186,7 +190,7 @@ struct DealsView: View {
             category: "system",
             message: """
             Deals[\(event)] total=\(appModel.listings.count) visible=\(filteredListings.count) \
-            day=\(dayFilter.label) area=\(areaFilter?.rawValue ?? "All")
+            day=\(dayFilter.label) area=\(areaFilter ?? "All")
             """
         )
         if !areaSummary.isEmpty {

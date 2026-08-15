@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CatalogVenue, supabase } from "./supabase";
+import { CatalogGeography, CatalogVenue, supabase } from "./supabase";
 import { loadMapKit } from "./mapkitLoader";
 
 /** OSU North Campus default — matches main app MapKit region. */
@@ -9,6 +9,10 @@ const DEFAULT_SPAN = { lat: 0.06, lon: 0.06 };
 const VENUE_COLOR = "#2563eb";
 const TEST_VENUE_COLOR = "#16a34a";
 const PLACE_PIN_COLOR = "#dc2626";
+const GEO_PIN_COLOR = "#7c3aed";
+const GEO_CIRCLE_COLOR = "#7c3aed";
+
+const MILES_TO_METERS = 1609.344;
 
 const LOG_PREFIX = "[CMS Map]";
 
@@ -24,25 +28,34 @@ export type MapCoords = { latitude: number; longitude: number };
 
 type MapPanelProps = {
   onStartVenue?: (coords: MapCoords) => void;
+  onStartGeography?: (coords: MapCoords) => void;
 };
+
+type PlaceKind = "venue" | "geography";
 
 function formatCoord(n: number) {
   return n.toFixed(6);
 }
 
-export function MapPanel({ onStartVenue }: MapPanelProps) {
+export function MapPanel({ onStartVenue, onStartGeography }: MapPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapkit.Map | null>(null);
   const placePinRef = useRef<mapkit.MarkerAnnotation | null>(null);
   const placingModeRef = useRef(false);
+  const placeKindRef = useRef<PlaceKind>("venue");
+  const geoOverlaysRef = useRef<mapkit.CircleOverlay[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading map…");
   const [placingMode, setPlacingMode] = useState(false);
+  const [placeKind, setPlaceKind] = useState<PlaceKind>("venue");
   const [pinCoords, setPinCoords] = useState<MapCoords | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showGeoBounds, setShowGeoBounds] = useState(false);
+  const [geographies, setGeographies] = useState<CatalogGeography[]>([]);
 
   placingModeRef.current = placingMode;
+  placeKindRef.current = placeKind;
 
   const loadVenues = useCallback(async (): Promise<CatalogVenue[]> => {
     const { data, error: err } = await supabase
@@ -53,6 +66,53 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
     if (err) throw err;
     return (data ?? []) as CatalogVenue[];
   }, []);
+
+  const loadGeographies = useCallback(async (): Promise<CatalogGeography[]> => {
+    const { data, error: err } = await supabase
+      .from("catalog_geographies")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (err) {
+      mapWarn("geographies load failed (run catalog_geographies.sql?)", err);
+      return [];
+    }
+    return (data ?? []) as CatalogGeography[];
+  }, []);
+
+  const syncGeoOverlays = useCallback(
+    (geos: CatalogGeography[], visible: boolean) => {
+      const map = mapRef.current;
+      if (!map) return;
+      for (const overlay of geoOverlaysRef.current) {
+        try {
+          map.removeOverlay(overlay);
+        } catch {
+          // ignore
+        }
+      }
+      geoOverlaysRef.current = [];
+      if (!visible) return;
+      for (const geo of geos) {
+        const overlay = new mapkit.CircleOverlay(
+          new mapkit.Coordinate(geo.latitude, geo.longitude),
+          geo.radius_miles * MILES_TO_METERS,
+          {
+            style: new mapkit.Style({
+              strokeColor: GEO_CIRCLE_COLOR,
+              strokeOpacity: 0.9,
+              lineWidth: 2,
+              fillColor: GEO_CIRCLE_COLOR,
+              fillOpacity: 0.12,
+            }),
+          }
+        );
+        map.addOverlay(overlay);
+        geoOverlaysRef.current.push(overlay);
+      }
+    },
+    []
+  );
 
   const syncPinFromAnnotation = useCallback((ann: mapkit.MarkerAnnotation) => {
     const c = ann.coordinate;
@@ -87,8 +147,9 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
       const marker = new mapkit.MarkerAnnotation(
         new mapkit.Coordinate(latitude, longitude),
         {
-          title: "Drop pin",
-          color: PLACE_PIN_COLOR,
+          title: placeKindRef.current === "geography" ? "Geography center" : "Drop pin",
+          color:
+            placeKindRef.current === "geography" ? GEO_PIN_COLOR : PLACE_PIN_COLOR,
           draggable: true,
         }
       );
@@ -230,10 +291,13 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
         mapLog("registered single-tap listener");
 
         const venues = await loadVenues();
+        const geos = await loadGeographies();
         if (destroyed) {
           mapWarn("destroyed before venues applied");
           return;
         }
+
+        setGeographies(geos);
 
         for (const venue of venues) {
           const marker = new mapkit.MarkerAnnotation(
@@ -255,6 +319,7 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
             : "No active venues"
         );
         setError(null);
+        if (showGeoBounds) syncGeoOverlays(geos, true);
       } catch (e) {
         const message =
           e instanceof Error ? e.message : "MapKit JS failed to load";
@@ -285,7 +350,11 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
         }
       }
     };
-  }, [loadVenues, syncPinFromAnnotation]);
+  }, [loadVenues, loadGeographies, syncGeoOverlays, syncPinFromAnnotation]);
+
+  useEffect(() => {
+    syncGeoOverlays(geographies, showGeoBounds);
+  }, [geographies, showGeoBounds, syncGeoOverlays]);
 
   const coordsText = pinCoords
     ? `${formatCoord(pinCoords.latitude)}, ${formatCoord(pinCoords.longitude)}`
@@ -307,19 +376,6 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
     }
   }
 
-  function togglePlacingMode() {
-    setPlacingMode((v) => {
-      const next = !v;
-      mapLog("Place pin toggled", {
-        placingMode: next,
-        hasExistingPin: !!placePinRef.current,
-        mapReady: !!mapRef.current,
-      });
-      return next;
-    });
-  }
-
-  return (
     <div className="map-panel-root">
       <div className="map-toolbar">
         {(error || status) && (
@@ -344,18 +400,38 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
         <div className="map-toolbar-actions">
           <button
             type="button"
-            className={placingMode ? "active" : ""}
-            onClick={togglePlacingMode}
+            className={placingMode && placeKind === "venue" ? "active" : ""}
+            onClick={() => {
+              setPlaceKind("venue");
+              setPlacingMode((v) => !(v && placeKind === "venue"));
+            }}
             disabled={!!error}
-            title={
-              placingMode
-                ? "Tap the map to set pin location"
-                : pinCoords
-                  ? "Move pin — then tap the map"
-                  : "Place pin — then tap the map"
-            }
+            title="Place a bar pin"
           >
-            {pinCoords ? "Move" : "Place"}
+            {pinCoords && placeKind === "venue" ? "Move bar" : "Place bar"}
+          </button>
+          <button
+            type="button"
+            className={placingMode && placeKind === "geography" ? "active" : ""}
+            onClick={() => {
+              setPlaceKind("geography");
+              setPlacingMode((v) => !(v && placeKind === "geography"));
+            }}
+            disabled={!!error}
+            title="Place a geography center"
+          >
+            {pinCoords && placeKind === "geography"
+              ? "Move geography"
+              : "Place geography"}
+          </button>
+          <button
+            type="button"
+            className={showGeoBounds ? "active" : ""}
+            onClick={() => setShowGeoBounds((v) => !v)}
+            disabled={!!error}
+            title="Show geography radius circles"
+          >
+            Geographies
           </button>
           {pinCoords && (
             <>
@@ -367,17 +443,25 @@ export function MapPanel({ onStartVenue }: MapPanelProps) {
               >
                 Remove
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  mapLog("Start venue from pin", pinCoords);
-                  onStartVenue?.(pinCoords);
-                }}
-                disabled={!onStartVenue}
-                title="Start venue from pin"
-              >
-                Start
-              </button>
+              {placeKind === "geography" ? (
+                <button
+                  type="button"
+                  onClick={() => onStartGeography?.(pinCoords)}
+                  disabled={!onStartGeography}
+                  title="Start geography from pin"
+                >
+                  Start geography
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onStartVenue?.(pinCoords)}
+                  disabled={!onStartVenue}
+                  title="Start venue from pin"
+                >
+                  Start venue
+                </button>
+              )}
             </>
           )}
         </div>

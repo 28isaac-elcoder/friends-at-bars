@@ -39,6 +39,8 @@ declare global {
       region: CoordinateRegion;
       addAnnotation(annotation: Annotation): void;
       removeAnnotation(annotation: Annotation): void;
+      addOverlay(overlay: CircleOverlay): void;
+      removeOverlay(overlay: CircleOverlay): void;
       destroy(): void;
       selectedAnnotation: Annotation | null;
       annotations: Annotation[];
@@ -80,6 +82,24 @@ declare global {
         }
       );
       color?: string;
+    }
+
+    class Style {
+      constructor(options?: {
+        strokeColor?: string;
+        strokeOpacity?: number;
+        lineWidth?: number;
+        fillColor?: string;
+        fillOpacity?: number;
+      });
+    }
+
+    class CircleOverlay {
+      constructor(
+        coordinate: Coordinate,
+        radius: number,
+        options?: { style?: Style }
+      );
     }
   }
 }

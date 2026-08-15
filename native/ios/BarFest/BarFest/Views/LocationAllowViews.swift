@@ -122,45 +122,81 @@ struct HorizontalChipScroll<Content: View>: View {
 
 /// Inline Activity gate — replaces bar list when location is off.
 struct ActivitiesLocationInlineGate: View {
+    var body: some View {
+        LocationInlineGate(
+            systemImage: "map.fill",
+            title: "Who Wants to Guess Which Bars are Popular?",
+            subtitleAlways: "Always allow location to see real headcounts at bars near you and add yourself to the count.",
+            subtitleEnable: "Enable Location to see real headcounts at bars near you and add yourself to the count.",
+            cta: "Show Me What's Busy"
+        )
+    }
+}
+
+/// Inline Chat gate — replaces the feed when location is off.
+struct ChatLocationInlineGate: View {
+    var onAllow: (() -> Void)?
+
+    var body: some View {
+        LocationInlineGate(
+            systemImage: "bubble.left.and.bubble.right.fill",
+            title: "Be a Part of The Conversation",
+            subtitleAlways: "Always allow location to Chat With Others",
+            subtitleEnable: "Enable Location to Chat With Others",
+            cta: "Start Chatting!",
+            onAllow: onAllow
+        )
+    }
+}
+
+/// Shared full-card location prompt (Activities / Chat).
+struct LocationInlineGate: View {
+    var systemImage: String
+    var title: String
+    var subtitleAlways: String
+    var subtitleEnable: String
+    var cta: String
+    var onAllow: (() -> Void)?
+
     @ObservedObject private var auth = LocationAuthorizationStore.shared
     @State private var busy = false
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "map.fill")
+            Image(systemName: systemImage)
                 .font(.system(size: 44))
                 .foregroundStyle(.white.opacity(0.9))
                 .symbolRenderingMode(.hierarchical)
 
-            Text("Who Wants to Guess Which Bars are Popular?")
+            Text(title)
                 .font(.title3.bold())
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 8)
 
-            Text(
-                auth.needsAlwaysUpgrade
-                    ? "Always allow location to see real headcounts at bars near you and add yourself to the count."
-                    : "Enable Location to see real headcounts at bars near you and add yourself to the count."
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 8)
+            Text(auth.needsAlwaysUpgrade ? subtitleAlways : subtitleEnable)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
 
             Button {
                 busy = true
-                auth.requestAllowLocation()
+                if let onAllow {
+                    onAllow()
+                } else {
+                    auth.requestAllowLocation()
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     busy = false
                 }
             } label: {
-                Text(busy ? "Opening…" : "Show Me What's Busy")
-                .font(.headline)
-                .foregroundStyle(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Text(busy ? "Opening…" : cta)
+                    .font(.headline)
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(busy)

@@ -4,6 +4,7 @@ struct CatalogVenue: Codable, Identifiable, Hashable {
     let id: UUID
     let name: String
     let area: String
+    let geography_id: UUID?
     let latitude: Double
     let longitude: Double
     let radius_m: Int
@@ -11,6 +12,27 @@ struct CatalogVenue: Codable, Identifiable, Hashable {
     let is_active: Bool
     let sort_order: Int
     let updated_at: String?
+}
+
+struct CatalogGeography: Codable, Identifiable, Hashable {
+    let id: UUID
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radius_miles: Double
+    let is_default: Bool
+    let is_active: Bool
+    let sort_order: Int
+}
+
+struct CatalogArea: Codable, Identifiable, Hashable {
+    let id: UUID
+    let geography_id: UUID
+    let long_name: String
+    let short_name: String
+    let accent_hex: String
+    let sort_order: Int
+    let is_active: Bool
 }
 
 struct CatalogListing: Codable, Identifiable, Hashable {

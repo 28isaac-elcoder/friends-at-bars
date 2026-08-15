@@ -5,20 +5,20 @@ struct ActivitiesView: View {
     @ObservedObject private var testMode = TestModeStore.shared
     @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
     @State private var populationSort: PopulationSort = .mostPopulated
-    @State private var areaFilter: CampusArea?
+    @State private var areaFilter: String?
     @State private var selectedVenue: CatalogVenue?
 
     private var priorityDeals: [CatalogListing] {
-        appModel.listings
+        appModel.scopedListings
             .filter { $0.priority > 0 }
             .sorted { $0.priority < $1.priority }
     }
 
     /// Bars with live attendance only (0 people hidden).
     private var filteredVenues: [CatalogVenue] {
-        var list = appModel.venues.filter { appModel.venueCounts[$0.name, default: 0] > 0 }
+        var list = appModel.scopedVenues.filter { appModel.venueCounts[$0.name, default: 0] > 0 }
         if let areaFilter {
-            list = list.filter { $0.area == areaFilter.rawValue }
+            list = list.filter { $0.area == areaFilter }
         }
         list.sort { a, b in
             let ca = appModel.venueCounts[a.name, default: 0]
@@ -73,16 +73,17 @@ struct ActivitiesView: View {
 
                     if showBarAttendance {
                         HorizontalChipScroll {
-                            ForEach(CampusArea.allCases) { area in
+                            ForEach(appModel.scopedAreas) { area in
                                 AreaFilterChip(
-                                    area: area,
-                                    selected: areaFilter == area
+                                    title: area.short_name,
+                                    accent: area.accentColor,
+                                    selected: areaFilter == area.long_name
                                 ) {
-                                    if areaFilter == area {
+                                    if areaFilter == area.long_name {
                                         areaFilter = nil
                                         populationSort = .mostPopulated
                                     } else {
-                                        areaFilter = area
+                                        areaFilter = area.long_name
                                         populationSort = .mostPopulated
                                     }
                                 }
@@ -91,7 +92,7 @@ struct ActivitiesView: View {
                     }
 
                     HStack(alignment: .center, spacing: 8) {
-                        Text(areaFilter == nil ? "Bars" : areaFilter!.rawValue)
+                        Text(areaFilter == nil ? "Bars" : areaFilter!)
                             .font(.headline)
                         Spacer(minLength: 8)
                         if showBarAttendance, !filteredVenues.isEmpty {
@@ -112,7 +113,7 @@ struct ActivitiesView: View {
 
                     if showBarAttendance {
                         if filteredVenues.isEmpty {
-                            ActivitiesNoActivityEmptyState(areaName: areaFilter?.rawValue)
+                            ActivitiesNoActivityEmptyState(areaName: areaFilter)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 36)
                         } else {
@@ -163,6 +164,9 @@ struct ActivitiesView: View {
             .task { await reload() }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
+            }
+            .onChange(of: appModel.resolvedGeography?.id) { _, _ in
+                areaFilter = nil
             }
             .onAppear { locationAuth.refresh() }
             .sheet(item: $selectedVenue) { venue in

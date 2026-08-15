@@ -21,7 +21,7 @@ struct ChatView: View {
     private var overCharLimit: Bool { remaining < 0 }
 
     private var venueOptions: [CatalogVenue] {
-        appModel.venues.sorted {
+        appModel.scopedVenues.sorted {
             if $0.area != $1.area { return $0.area < $1.area }
             return $0.name < $1.name
         }
@@ -51,137 +51,172 @@ struct ChatView: View {
     }
 
     private var displayedPosts: [ChatPost] {
-        useLocal ? localChat.feed(sort: sort) : posts
+        let feed = useLocal ? localChat.feed(sort: sort) : posts
+        let names = Set(appModel.scopedVenues.map(\.name))
+        guard !names.isEmpty else { return feed }
+        return feed.filter { names.contains($0.venue_name) }
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                HStack {
-                    Picker("Sort", selection: $sort) {
-                        Text("Recent").tag("recent")
-                        Text("Popular").tag("popular")
-                    }
-                    .pickerStyle(.segmented)
-
+                if needLocationGate {
                     if useLocal {
-                        Button {
-                            testMode.simulateLocationAllowed.toggle()
-                            DiagnosticLog.shared.append(
-                                category: "chat",
-                                message: "Simulate location allowed=\(testMode.simulateLocationAllowed)"
-                            )
-                        } label: {
-                            Image(systemName: testMode.simulateLocationAllowed
-                                  ? "location.fill"
-                                  : "location.slash")
-                        }
-
-                        Button {
-                            if selectMode {
-                                exitSelectMode()
-                            } else {
-                                selectMode = true
+                        HStack {
+                            Spacer()
+                            Button {
+                                testMode.simulateLocationAllowed.toggle()
+                                DiagnosticLog.shared.append(
+                                    category: "chat",
+                                    message: "Simulate location allowed=\(testMode.simulateLocationAllowed)"
+                                )
+                            } label: {
+                                Image(systemName: testMode.simulateLocationAllowed
+                                      ? "location.fill"
+                                      : "location.slash")
                             }
-                        } label: {
-                            Image(systemName: selectMode ? "xmark" : "list.bullet")
+                            .padding()
                         }
-                        .accessibilityLabel(selectMode ? "Exit select mode" : "Select messages")
                     }
-                }
-                .padding()
-                .onChange(of: sort) { _, _ in
-                    Task { await load() }
-                }
-
-                if selectMode && useLocal {
-                    HStack {
-                        Text("\(selectedIds.count) selected")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            localChat.forceVote(postIds: Array(selectedIds), direction: "up")
-                            exitSelectMode()
-                        } label: {
-                            Image(systemName: "chevron.up")
+                    Spacer(minLength: 24)
+                    ChatLocationInlineGate {
+                        if useLocal {
+                            testMode.simulateLocationAllowed = true
+                        } else {
+                            locationAuth.requestAllowLocation()
                         }
-                        .disabled(selectedIds.isEmpty)
-                        Button {
-                            localChat.forceVote(postIds: Array(selectedIds), direction: "down")
-                            exitSelectMode()
-                        } label: {
-                            Image(systemName: "chevron.down")
-                        }
-                        .disabled(selectedIds.isEmpty)
-                        Button(role: .destructive) {
-                            localChat.hide(postIds: Array(selectedIds))
-                            exitSelectMode()
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .disabled(selectedIds.isEmpty)
                     }
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
-                }
-
-                if useLocal && !selectMode {
-                    Text("Local test feed")
-                        .font(.caption2)
-                        .foregroundStyle(.cyan)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.bottom, 4)
-                }
-
-                List {
-                    ForEach(displayedPosts) { post in
-                        chatRow(post)
-                    }
-                }
-                .listStyle(.plain)
-
-                if let error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
-                }
-
-                composer
-            }
-            .navigationTitle("Chat")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 8) {
-                        Button {
-                            avatarPickerTarget = .own
-                        } label: {
-                            ChatAvatarBadge(selection: avatarStore.selection, size: 32)
+                    Spacer()
+                } else {
+                    HStack {
+                        Picker("Sort", selection: $sort) {
+                            Text("Recent").tag("recent")
+                            Text("Popular").tag("popular")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Change chat icon")
+                        .pickerStyle(.segmented)
 
                         if useLocal {
                             Button {
-                                avatarPickerTarget = .otherUser
+                                testMode.simulateLocationAllowed.toggle()
+                                DiagnosticLog.shared.append(
+                                    category: "chat",
+                                    message: "Simulate location allowed=\(testMode.simulateLocationAllowed)"
+                                )
                             } label: {
-                                ChatAvatarBadge(selection: avatarStore.otherSelection, size: 32)
+                                Image(systemName: testMode.simulateLocationAllowed
+                                      ? "location.fill"
+                                      : "location.slash")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Change other user chat icon")
+
+                            Button {
+                                if selectMode {
+                                    exitSelectMode()
+                                } else {
+                                    selectMode = true
+                                }
+                            } label: {
+                                Image(systemName: selectMode ? "xmark" : "list.bullet")
+                            }
+                            .accessibilityLabel(selectMode ? "Exit select mode" : "Select messages")
                         }
                     }
-                }
-                if useLocal {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Clear local") {
-                            localChat.clearAll()
-                            exitSelectMode()
+                    .padding()
+                    .onChange(of: sort) { _, _ in
+                        Task { await load() }
+                    }
+
+                    if selectMode && useLocal {
+                        HStack {
+                            Text("\(selectedIds.count) selected")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                localChat.forceVote(postIds: Array(selectedIds), direction: "up")
+                                exitSelectMode()
+                            } label: {
+                                Image(systemName: "chevron.up")
+                            }
+                            .disabled(selectedIds.isEmpty)
+                            Button {
+                                localChat.forceVote(postIds: Array(selectedIds), direction: "down")
+                                exitSelectMode()
+                            } label: {
+                                Image(systemName: "chevron.down")
+                            }
+                            .disabled(selectedIds.isEmpty)
+                            Button(role: .destructive) {
+                                localChat.hide(postIds: Array(selectedIds))
+                                exitSelectMode()
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .disabled(selectedIds.isEmpty)
                         }
-                        .font(.caption)
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                    }
+
+                    if useLocal && !selectMode {
+                        Text("Local test feed")
+                            .font(.caption2)
+                            .foregroundStyle(.cyan)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.bottom, 4)
+                    }
+
+                    List {
+                        ForEach(displayedPosts) { post in
+                            chatRow(post)
+                        }
+                    }
+                    .listStyle(.plain)
+
+                    if let error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal)
+                    }
+
+                    composer
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if !needLocationGate {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HStack(spacing: 8) {
+                            Button {
+                                avatarPickerTarget = .own
+                            } label: {
+                                ChatAvatarBadge(selection: avatarStore.selection, size: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Change chat icon")
+
+                            if useLocal {
+                                Button {
+                                    avatarPickerTarget = .otherUser
+                                } label: {
+                                    ChatAvatarBadge(selection: avatarStore.otherSelection, size: 32)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Change other user chat icon")
+                            }
+                        }
+                    }
+                    if useLocal {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Clear local") {
+                                localChat.clearAll()
+                                exitSelectMode()
+                            }
+                            .font(.caption)
+                        }
                     }
                 }
             }
@@ -204,8 +239,17 @@ struct ChatView: View {
                 exitSelectMode()
                 Task { await load() }
             }
+            .onChange(of: locationAuth.isAuthorized) { _, _ in
+                Task { await load() }
+            }
+            .onChange(of: testMode.simulateLocationAllowed) { _, _ in
+                Task { await load() }
+            }
             .onChange(of: localChat.posts.count) { _, _ in
                 if useLocal { posts = localChat.feed(sort: sort) }
+            }
+            .onChange(of: appModel.resolvedGeography?.id) { _, _ in
+                Task { await load() }
             }
         }
     }
@@ -329,36 +373,7 @@ struct ChatView: View {
                 }
             }
 
-            if needLocationGate {
-                VStack(alignment: .leading, spacing: 8) {
-                    Button {
-                        if useLocal {
-                            testMode.simulateLocationAllowed = true
-                        } else {
-                            locationAuth.requestAllowLocation()
-                        }
-                    } label: {
-                        Text(
-                            useLocal
-                                ? "Enable location to chat with others"
-                                : (locationAuth.needsAlwaysUpgrade
-                                   ? "Always allow location to chat with others"
-                                   : "Enable location to chat with others")
-                        )
-                        .font(.subheadline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-
-                    Text(LocationPrivacyCopy.underButton)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                }
-            } else if !useLocal && !atVenue {
+            if !useLocal && !atVenue {
                 Text("Must be at a Bar to Chat")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -436,6 +451,11 @@ struct ChatView: View {
     }
 
     private func load() async {
+        guard !needLocationGate else {
+            posts = []
+            error = nil
+            return
+        }
         if useLocal {
             posts = localChat.feed(sort: sort)
             error = nil

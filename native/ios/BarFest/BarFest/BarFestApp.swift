@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 @main
 struct BarFestApp: App {
@@ -27,13 +28,53 @@ struct BarFestApp: App {
 final class AppModel: ObservableObject {
     @Published var venues: [CatalogVenue] = []
     @Published var listings: [CatalogListing] = []
+    @Published var geographies: [CatalogGeography] = []
+    @Published var areas: [CatalogArea] = []
     @Published var venueCounts: [String: Int] = [:]
     @Published var wordPackReady = false
     @Published var lastVenueName: String?
     @Published var errorMessage: String?
     @Published var isRefreshing = false
+    @Published var lastKnownCoordinate: CLLocationCoordinate2D?
+    @Published var manualGeographyId: UUID?
 
     private let locationBridge = LocationBridge()
+    private let manualGeographyKey = "barfest_manual_geography_id"
+
+    var resolvedGeography: CatalogGeography? {
+        if let id = manualGeographyId, let match = geographies.first(where: { $0.id == id }) {
+            return match
+        }
+        return GeographyResolver.automatic(coordinate: lastKnownCoordinate, from: geographies)
+    }
+
+    var scopedVenues: [CatalogVenue] {
+        guard let geo = resolvedGeography else { return venues }
+        let matched = venues.filter { $0.geography_id == geo.id }
+        return matched.isEmpty ? venues : matched
+    }
+
+    var scopedListings: [CatalogListing] {
+        let names = Set(scopedVenues.map(\.name))
+        guard !names.isEmpty else { return listings }
+        let matched = listings.filter { names.contains($0.venue_name) }
+        return matched.isEmpty ? listings : matched
+    }
+
+    var scopedAreas: [CatalogArea] {
+        guard let geo = resolvedGeography else { return areas }
+        let matched = areas.filter { $0.geography_id == geo.id }
+        return matched.isEmpty ? areas : matched
+    }
+
+    func setManualGeography(_ id: UUID?) {
+        manualGeographyId = id
+        if let id {
+            UserDefaults.standard.set(id.uuidString, forKey: manualGeographyKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: manualGeographyKey)
+        }
+    }
 
     func bootstrap() async {
         DiagnosticLog.shared.append(
@@ -42,6 +83,9 @@ final class AppModel: ObservableObject {
         )
         await CatalogStore.shared.loadCachedVenuesIfNeeded()
         venues = await CatalogStore.shared.venues
+        if let raw = UserDefaults.standard.string(forKey: manualGeographyKey) {
+            manualGeographyId = UUID(uuidString: raw)
+        }
         await refreshCatalog()
         locationBridge.start(
             venues: venues,
@@ -53,6 +97,11 @@ final class AppModel: ObservableObject {
             onPresenceWrite: { [weak self] action in
                 Task { @MainActor in
                     await self?.refreshLiveCountsOnly(source: "presence-\(action)")
+                }
+            },
+            onCoordinate: { [weak self] coord in
+                Task { @MainActor in
+                    self?.lastKnownCoordinate = coord
                 }
             }
         )
@@ -87,6 +136,8 @@ final class AppModel: ObservableObject {
             try await CatalogStore.shared.refresh(includeTest: includeTest)
             venues = await CatalogStore.shared.venues
             listings = await CatalogStore.shared.listings
+            geographies = await CatalogStore.shared.geographies
+            areas = await CatalogStore.shared.areas
             let cmsLibrary = await CatalogStore.shared.switchSearchLibrary
             let wordPack = await CatalogStore.shared.wordPack
             wordPackReady = cmsLibrary != nil || !wordPack.isEmpty
@@ -107,6 +158,8 @@ final class AppModel: ObservableObject {
             errorMessage = error.localizedDescription
             venues = await CatalogStore.shared.venues
             listings = await CatalogStore.shared.listings
+            geographies = await CatalogStore.shared.geographies
+            areas = await CatalogStore.shared.areas
             DiagnosticLog.shared.append(
                 category: "error",
                 message: "Catalog refresh failed: \(error.localizedDescription)",
@@ -188,14 +241,17 @@ final class AppModel: ObservableObject {
 final class LocationBridge: VenueLiveLocationEngineDelegate {
     private var onVenue: ((String?) -> Void)?
     private var onPresenceWrite: ((String) -> Void)?
+    private var onCoordinate: ((CLLocationCoordinate2D) -> Void)?
 
     func start(
         venues: [CatalogVenue],
         onVenue: @escaping (String?) -> Void,
-        onPresenceWrite: ((String) -> Void)? = nil
+        onPresenceWrite: ((String) -> Void)? = nil,
+        onCoordinate: ((CLLocationCoordinate2D) -> Void)? = nil
     ) {
         self.onVenue = onVenue
         self.onPresenceWrite = onPresenceWrite
+        self.onCoordinate = onCoordinate
         do {
             let records = venues.map {
                 VenueRecord(name: $0.name, area: $0.area, coordinates: [$0.latitude, $0.longitude])
@@ -243,7 +299,9 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
     }
 
     nonisolated func engine(_ engine: VenueLiveLocationEngine, didUpdateCoordinate coordinate: CLLocationCoordinate2D) {
-        // Coordinate stream is handled inside the presence engine logs.
+        Task { @MainActor in
+            self.onCoordinate?(coordinate)
+        }
     }
 
     nonisolated func engine(
@@ -284,7 +342,3 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 }
-
-import CoreLocation
-
-// CLLocationManagerProbe removed — use LocationAuthorizationStore.shared

@@ -274,7 +274,23 @@ select {
   border-radius: 6px;
 }
 
-/* Shared helpers */
+tr.row-selected {
+  background: #eef6f0;
+}
+
+.geo-areas {
+  margin-top: 2rem;
+}
+
+.color-swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  vertical-align: middle;
+  border: 1px solid #ccc;
+}
+
 .table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

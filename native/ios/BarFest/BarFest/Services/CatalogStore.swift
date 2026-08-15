@@ -5,6 +5,8 @@ actor CatalogStore {
 
     private(set) var venues: [CatalogVenue] = []
     private(set) var listings: [CatalogListing] = []
+    private(set) var geographies: [CatalogGeography] = []
+    private(set) var areas: [CatalogArea] = []
     private(set) var contentVersion: Int?
     private(set) var wordPack: [String] = []
     /// Bucketed Switch Search pack from `catalog_game_content` (nil if CMS missing/empty).
@@ -40,6 +42,24 @@ actor CatalogStore {
         listings = (try? await SupabaseClient.shared.get(
             path: "rest/v1/catalog_listings",
             query: listingQuery
+        )) ?? []
+
+        geographies = (try? await SupabaseClient.shared.get(
+            path: "rest/v1/catalog_geographies",
+            query: [
+                URLQueryItem(name: "is_active", value: "eq.true"),
+                URLQueryItem(name: "order", value: "sort_order.asc"),
+                URLQueryItem(name: "select", value: "*"),
+            ]
+        )) ?? []
+
+        areas = (try? await SupabaseClient.shared.get(
+            path: "rest/v1/catalog_areas",
+            query: [
+                URLQueryItem(name: "is_active", value: "eq.true"),
+                URLQueryItem(name: "order", value: "sort_order.asc"),
+                URLQueryItem(name: "select", value: "*"),
+            ]
         )) ?? []
 
         struct ConfigRow: Decodable {

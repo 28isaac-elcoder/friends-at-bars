@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { CatalogVenue, supabase } from "./supabase";
+import { CatalogArea, CatalogGeography, CatalogVenue, supabase } from "./supabase";
 import type { MapCoords } from "./MapPanel";
 
 const empty: Omit<CatalogVenue, "id"> = {
   name: "",
   area: "North Campus",
+  geography_id: null,
   latitude: 40.0,
   longitude: -83.01,
   radius_m: 100,
@@ -23,25 +24,37 @@ export function VenuesPanel({
   onSeedConsumed,
 }: VenuesPanelProps) {
   const [rows, setRows] = useState<CatalogVenue[]>([]);
+  const [geos, setGeos] = useState<CatalogGeography[]>([]);
+  const [areas, setAreas] = useState<CatalogArea[]>([]);
   const [draft, setDraft] = useState(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from("catalog_venues")
-      .select("*")
-      .order("sort_order", { ascending: true });
-    if (err) setError(err.message);
+    const [vRes, gRes, aRes] = await Promise.all([
+      supabase.from("catalog_venues").select("*").order("sort_order", { ascending: true }),
+      supabase.from("catalog_geographies").select("*").order("sort_order", { ascending: true }),
+      supabase.from("catalog_areas").select("*").order("sort_order", { ascending: true }),
+    ]);
+    if (vRes.error) setError(vRes.error.message);
     else {
       setError(null);
-      setRows((data ?? []) as CatalogVenue[]);
+      setRows((vRes.data ?? []) as CatalogVenue[]);
     }
+    if (!gRes.error) setGeos((gRes.data ?? []) as CatalogGeography[]);
+    if (!aRes.error) setAreas((aRes.data ?? []) as CatalogArea[]);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!geos.length || draft.geography_id) return;
+    const def = geos.find((g) => g.is_default) ?? geos[0];
+    const firstArea = areas.find((a) => a.geography_id === def.id);
+    setDraft((d) => ({
+      ...d,
+      geography_id: def.id,
+      area: firstArea?.long_name ?? d.area,
+    }));
+  }, [geos, areas, draft.geography_id]);
 
   useEffect(() => {
     if (!seedCoords) return;
@@ -84,6 +97,7 @@ export function VenuesPanel({
     setDraft({
       name: v.name,
       area: v.area,
+      geography_id: v.geography_id,
       latitude: v.latitude,
       longitude: v.longitude,
       radius_m: v.radius_m,
@@ -116,12 +130,45 @@ export function VenuesPanel({
           />
         </label>
         <label>
+          Geography
+          <select
+            value={draft.geography_id ?? ""}
+            onChange={(e) => {
+              const geography_id = e.target.value || null;
+              const firstArea = areas.find((a) => a.geography_id === geography_id);
+              setDraft({
+                ...draft,
+                geography_id,
+                area: firstArea?.long_name ?? draft.area,
+              });
+            }}
+            required
+          >
+            <option value="" disabled>
+              Select geography
+            </option>
+            {geos.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Area
-          <input
+          <select
             value={draft.area}
             onChange={(e) => setDraft({ ...draft, area: e.target.value })}
             required
-          />
+          >
+            {areas
+              .filter((a) => a.geography_id === draft.geography_id)
+              .map((a) => (
+                <option key={a.id} value={a.long_name}>
+                  {a.long_name}
+                </option>
+              ))}
+          </select>
         </label>
         <label>
           Latitude
@@ -214,6 +261,7 @@ export function VenuesPanel({
         <thead>
           <tr>
             <th>Name</th>
+            <th>Geography</th>
             <th>Area</th>
             <th>Lat / Lng</th>
             <th>Flags</th>
@@ -224,6 +272,7 @@ export function VenuesPanel({
           {rows.map((v) => (
             <tr key={v.id}>
               <td>{v.name}</td>
+              <td>{geos.find((g) => g.id === v.geography_id)?.name ?? "—"}</td>
               <td>{v.area}</td>
               <td>
                 {v.latitude.toFixed(5)}, {v.longitude.toFixed(5)}

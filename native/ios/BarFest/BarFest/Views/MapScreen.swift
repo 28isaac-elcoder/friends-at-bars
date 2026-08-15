@@ -8,8 +8,8 @@ struct MapScreen: View {
     @ObservedObject private var locationAuth = LocationAuthorizationStore.shared
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 40.002, longitude: -83.008),
-            span: MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
+            center: CLLocationCoordinate2D(latitude: 39.981997, longitude: -83.004427),
+            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
         )
     )
     @State private var selectedVenue: CatalogVenue?
@@ -24,16 +24,30 @@ struct MapScreen: View {
 
     /// Highest live headcount among currently shown venues (for relative heat).
     private var maxAttendance: Int {
-        appModel.venues.reduce(0) { partial, venue in
+        appModel.scopedVenues.reduce(0) { partial, venue in
             max(partial, appModel.venueCounts[venue.name, default: 0])
         }
+    }
+
+    private var mapRegion: MKCoordinateRegion {
+        if let geo = appModel.resolvedGeography {
+            let delta = max(0.04, geo.radius_miles / 69.0 * 2.1)
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: geo.latitude, longitude: geo.longitude),
+                span: MKCoordinateSpan(latitudeDelta: delta, longitudeDelta: delta)
+            )
+        }
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 39.981997, longitude: -83.004427),
+            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+        )
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Map(position: $position) {
-                    ForEach(appModel.venues) { venue in
+                    ForEach(appModel.scopedVenues) { venue in
                         let count = appModel.venueCounts[venue.name, default: 0]
                         Annotation(
                             venue.name,
@@ -123,7 +137,14 @@ struct MapScreen: View {
             .onChange(of: testMode.simulateLocationAllowed) { _, allowed in
                 if !allowed { selectedVenue = nil }
             }
-            .onAppear { locationAuth.refresh() }
+            .onAppear {
+                locationAuth.refresh()
+                position = .region(mapRegion)
+            }
+            .onChange(of: appModel.resolvedGeography?.id) { _, _ in
+                selectedVenue = nil
+                position = .region(mapRegion)
+            }
         }
     }
 

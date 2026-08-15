@@ -14,10 +14,32 @@ export const supabase = createClient(
   key || "your-key"
 );
 
+export type CatalogGeography = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_miles: number;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+};
+
+export type CatalogArea = {
+  id: string;
+  geography_id: string;
+  long_name: string;
+  short_name: string;
+  accent_hex: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
 export type CatalogVenue = {
   id: string;
   name: string;
   area: string;
+  geography_id: string | null;
   latitude: number;
   longitude: number;
   radius_m: number;
