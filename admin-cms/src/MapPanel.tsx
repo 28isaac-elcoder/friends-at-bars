@@ -376,6 +376,7 @@ export function MapPanel({ onStartVenue, onStartGeography }: MapPanelProps) {
     }
   }
 
+  return (
     <div className="map-panel-root">
       <div className="map-toolbar">
         {(error || status) && (
