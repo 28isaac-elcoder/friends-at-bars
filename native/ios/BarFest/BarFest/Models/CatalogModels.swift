@@ -22,6 +22,7 @@ struct CatalogGeography: Codable, Identifiable, Hashable {
     let radius_miles: Double
     let is_default: Bool
     let is_active: Bool
+    let is_test: Bool
     let sort_order: Int
 }
 

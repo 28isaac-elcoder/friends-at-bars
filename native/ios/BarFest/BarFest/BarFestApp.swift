@@ -41,6 +41,19 @@ final class AppModel: ObservableObject {
     private let locationBridge = LocationBridge()
     private let manualGeographyKey = "barfest_manual_geography_id"
 
+    /// Geography IDs the current catalog load exposes (active + non-test unless Test Mode).
+    private var visibleGeographyIds: Set<UUID> {
+        Set(geographies.map(\.id))
+    }
+
+    /// Venues whose parent geography is visible — geography active/test supersedes venue flags in the app.
+    var venuesInVisibleGeographies: [CatalogVenue] {
+        venues.filter { venue in
+            guard let gid = venue.geography_id else { return false }
+            return visibleGeographyIds.contains(gid)
+        }
+    }
+
     var resolvedGeography: CatalogGeography? {
         if let id = manualGeographyId, let match = geographies.first(where: { $0.id == id }) {
             return match
@@ -49,22 +62,21 @@ final class AppModel: ObservableObject {
     }
 
     var scopedVenues: [CatalogVenue] {
-        guard let geo = resolvedGeography else { return venues }
-        let matched = venues.filter { $0.geography_id == geo.id }
-        return matched.isEmpty ? venues : matched
+        let base = venuesInVisibleGeographies
+        guard let geo = resolvedGeography else { return base }
+        return base.filter { $0.geography_id == geo.id }
     }
 
     var scopedListings: [CatalogListing] {
         let names = Set(scopedVenues.map(\.name))
-        guard !names.isEmpty else { return listings }
-        let matched = listings.filter { names.contains($0.venue_name) }
-        return matched.isEmpty ? listings : matched
+        guard !names.isEmpty else { return [] }
+        return listings.filter { names.contains($0.venue_name) }
     }
 
     var scopedAreas: [CatalogArea] {
-        guard let geo = resolvedGeography else { return areas }
-        let matched = areas.filter { $0.geography_id == geo.id }
-        return matched.isEmpty ? areas : matched
+        let visible = areas.filter { visibleGeographyIds.contains($0.geography_id) }
+        guard let geo = resolvedGeography else { return visible }
+        return visible.filter { $0.geography_id == geo.id }
     }
 
     func setManualGeography(_ id: UUID?) {
@@ -88,7 +100,7 @@ final class AppModel: ObservableObject {
         }
         await refreshCatalog()
         locationBridge.start(
-            venues: venues,
+            venues: venuesInVisibleGeographies,
             onVenue: { [weak self] name in
                 Task { @MainActor in
                     self?.lastVenueName = name
@@ -112,7 +124,7 @@ final class AppModel: ObservableObject {
     /// Lightweight headcount refresh after our own upsert/deactivate (avoids full catalog round-trip).
     func refreshLiveCountsOnly(source: String) async {
         if TestModeStore.shared.useMockCheckIns {
-            venueCounts = mockVenueCounts(from: venues)
+            venueCounts = mockVenueCounts(from: venuesInVisibleGeographies)
             await logHeadcountSnapshot(source: source)
             return
         }
@@ -138,11 +150,14 @@ final class AppModel: ObservableObject {
             listings = await CatalogStore.shared.listings
             geographies = await CatalogStore.shared.geographies
             areas = await CatalogStore.shared.areas
+            if let id = manualGeographyId, !geographies.contains(where: { $0.id == id }) {
+                setManualGeography(nil)
+            }
             let cmsLibrary = await CatalogStore.shared.switchSearchLibrary
             let wordPack = await CatalogStore.shared.wordPack
             wordPackReady = cmsLibrary != nil || !wordPack.isEmpty
             if TestModeStore.shared.useMockCheckIns {
-                venueCounts = mockVenueCounts(from: venues)
+                venueCounts = mockVenueCounts(from: venuesInVisibleGeographies)
                 DiagnosticLog.shared.append(
                     category: "location",
                     message: "venueCounts using Test Mode mock (\(venueCounts.count) venues)"
@@ -150,7 +165,7 @@ final class AppModel: ObservableObject {
             } else {
                 venueCounts = try await LiveLocationService.venueCounts()
             }
-            locationBridge.updateVenues(venues)
+            locationBridge.updateVenues(venuesInVisibleGeographies)
             errorMessage = nil
             await logCatalogDiagnostics(source: "refresh")
             await logHeadcountSnapshot(source: "refresh")

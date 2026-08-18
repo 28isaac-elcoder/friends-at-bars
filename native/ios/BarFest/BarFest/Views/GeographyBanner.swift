@@ -6,6 +6,7 @@ struct GeographyBanner: View {
     var body: some View {
         Menu {
             Button {
+                KeyboardObserver.dismiss()
                 appModel.setManualGeography(nil)
             } label: {
                 HStack {
@@ -17,6 +18,7 @@ struct GeographyBanner: View {
             }
             ForEach(appModel.geographies) { geo in
                 Button {
+                    KeyboardObserver.dismiss()
                     appModel.setManualGeography(geo.id)
                 } label: {
                     HStack {

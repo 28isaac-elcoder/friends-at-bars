@@ -122,7 +122,9 @@ struct ChatView: View {
                         }
                     }
                     .padding()
+                    .dismissKeyboardOnTap()
                     .onChange(of: sort) { _, _ in
+                        composerFocused = false
                         Task { await load() }
                     }
 
@@ -173,6 +175,8 @@ struct ChatView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .dismissKeyboardOnTap()
 
                     if let error {
                         Text(error)

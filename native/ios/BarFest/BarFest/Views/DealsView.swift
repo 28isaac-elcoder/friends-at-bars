@@ -5,6 +5,7 @@ struct DealsView: View {
     @State private var dayFilter: DayFilter = .today
     @State private var areaFilter: String?
     @State private var venueSearch = ""
+    @FocusState private var searchFocused: Bool
 
     private var searchQuery: String {
         venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -45,6 +46,7 @@ struct DealsView: View {
                         ForEach(DayFilter.allCases) { day in
                             Button {
                                 dayFilter = day
+                                searchFocused = false
                             } label: {
                                 HStack {
                                     Text(day.label)
@@ -70,6 +72,7 @@ struct DealsView: View {
                                 accent: area.accentColor,
                                 selected: areaFilter == area.long_name
                             ) {
+                                searchFocused = false
                                 if areaFilter == area.long_name {
                                     areaFilter = nil
                                 } else {
@@ -86,9 +89,12 @@ struct DealsView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .submitLabel(.search)
+                            .focused($searchFocused)
+                            .onSubmit { searchFocused = false }
                         if !venueSearch.isEmpty {
                             Button {
                                 venueSearch = ""
+                                searchFocused = false
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
@@ -115,12 +121,16 @@ struct DealsView: View {
                             systemImage: "magnifyingglass",
                             description: Text("Try another bar name, day, or area.")
                         )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .dismissKeyboardOnTap()
                     } else {
                         ContentUnavailableView(
                             "No deals",
                             systemImage: "tag",
                             description: Text("Try another day or area, or pull to refresh.")
                         )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .dismissKeyboardOnTap()
                     }
                 } else {
                     List(filteredListings) { item in
@@ -166,6 +176,8 @@ struct DealsView: View {
                         .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                     }
                     .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .dismissKeyboardOnTap()
                 }
             }
             .background(Color.black.ignoresSafeArea())

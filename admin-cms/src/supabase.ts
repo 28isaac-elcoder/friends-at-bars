@@ -22,6 +22,7 @@ export type CatalogGeography = {
   radius_miles: number;
   is_default: boolean;
   is_active: boolean;
+  is_test: boolean;
   sort_order: number;
 };
 
@@ -51,6 +52,7 @@ export type CatalogVenue = {
 export type CatalogListing = {
   id: string;
   venue_name: string;
+  geography_id: string | null;
   title: string;
   time_label: string;
   details: string;

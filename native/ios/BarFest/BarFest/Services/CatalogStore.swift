@@ -46,11 +46,17 @@ actor CatalogStore {
 
         geographies = (try? await SupabaseClient.shared.get(
             path: "rest/v1/catalog_geographies",
-            query: [
-                URLQueryItem(name: "is_active", value: "eq.true"),
-                URLQueryItem(name: "order", value: "sort_order.asc"),
-                URLQueryItem(name: "select", value: "*"),
-            ]
+            query: {
+                var items = [
+                    URLQueryItem(name: "is_active", value: "eq.true"),
+                    URLQueryItem(name: "order", value: "sort_order.asc"),
+                    URLQueryItem(name: "select", value: "*"),
+                ]
+                if !includeTest {
+                    items.append(URLQueryItem(name: "is_test", value: "eq.false"))
+                }
+                return items
+            }()
         )) ?? []
 
         areas = (try? await SupabaseClient.shared.get(

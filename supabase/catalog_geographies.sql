@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS catalog_geographies (
   radius_miles DOUBLE PRECISION NOT NULL DEFAULT 35,
   is_default BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  is_test BOOLEAN NOT NULL DEFAULT false,
   sort_order INTEGER NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -88,8 +89,8 @@ GRANT SELECT ON catalog_geographies, catalog_areas TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON catalog_geographies, catalog_areas TO authenticated;
 
 -- Seed Columbus (idempotent by name)
-INSERT INTO catalog_geographies (name, latitude, longitude, radius_miles, is_default, is_active, sort_order)
-VALUES ('Columbus', 39.981997, -83.004427, 35, true, true, 0)
+INSERT INTO catalog_geographies (name, latitude, longitude, radius_miles, is_default, is_active, is_test, sort_order)
+VALUES ('Columbus', 39.981997, -83.004427, 35, true, true, false, 0)
 ON CONFLICT (name) DO UPDATE
 SET
   latitude = EXCLUDED.latitude,

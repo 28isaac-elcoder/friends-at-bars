@@ -33,6 +33,7 @@ private enum AppTab: Hashable {
 
 struct RootTabView: View {
     @ObservedObject private var testMode = TestModeStore.shared
+    @ObservedObject private var keyboard = KeyboardObserver.shared
     @State private var selectedTab: AppTab = .activities
     @State private var shakeTriggers: [AppTab: Int] = [:]
 
@@ -62,8 +63,12 @@ struct RootTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            customTabBar
+            if !keyboard.isVisible {
+                customTabBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.22), value: keyboard.isVisible)
         .preferredColorScheme(.dark)
         .onChange(of: testMode.uiEnabled) { _, enabled in
             if !enabled, selectedTab == .log {
@@ -119,6 +124,7 @@ struct RootTabView: View {
     }
 
     private func select(_ tab: AppTab) {
+        KeyboardObserver.dismiss()
         selectedTab = tab
         shakeTriggers[tab, default: 0] += 1
     }

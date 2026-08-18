@@ -473,6 +473,67 @@ tr.row-selected {
   margin-bottom: 0.35rem;
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(26, 26, 26, 0.45);
+}
+
+.confirm-dialog {
+  width: min(100%, 24rem);
+  border: 1px solid #ddd6cb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: #faf9f7;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.confirm-dialog h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 1rem;
+  color: #444;
+  line-height: 1.45;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.venue-row-editing td {
+  background: #f3f0ea;
+  border-top: 2px solid #c7c2b8;
+  border-bottom: 2px solid #c7c2b8;
+  padding: 0.85rem;
+}
+
+.venue-inline-edit {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.venue-inline-edit-header {
+  font-size: 0.95rem;
+}
+
+.venue-inline-edit-grid {
+  margin: 0;
+}
+
+.venue-inline-edit-actions {
+  margin-top: 0.15rem;
+}
+
 /* Mobile / narrow screens */
 @media (max-width: 720px) {
   .app-shell,

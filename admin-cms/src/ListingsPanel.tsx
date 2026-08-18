@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CatalogArea,
+  CatalogGeography,
   CatalogListing,
   CatalogVenue,
   supabase,
 } from "./supabase";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TYPE_OPTIONS = ["Drink Special", "Food Special", "Event"];
 
 type Draft = Omit<CatalogListing, "id">;
 
-function blank(venueName = ""): Draft {
+function blank(venueName = "", geographyId: string | null = null): Draft {
   return {
     venue_name: venueName,
+    geography_id: geographyId,
     title: "",
     time_label: "",
     details: "",
@@ -48,15 +51,73 @@ function toggleType(labels: string[], label: string): string[] {
 }
 
 /** Lower number = higher rank (1 is top). 0 = not prioritized. */
-function prioritizedSorted(rows: CatalogListing[]): CatalogListing[] {
-  return rows
-    .filter((r) => r.priority > 0)
-    .sort((a, b) => a.priority - b.priority || a.venue_name.localeCompare(b.venue_name));
+function listingGeographyId(
+  row: CatalogListing,
+  venues: CatalogVenue[]
+): string | null {
+  if (row.geography_id) return row.geography_id;
+  return venues.find((v) => v.name === row.venue_name)?.geography_id ?? null;
 }
 
-function nextPriorityValue(rows: CatalogListing[]): number {
-  const max = rows.reduce((m, r) => (r.priority > m ? r.priority : m), 0);
+function rowsInGeography(
+  rows: CatalogListing[],
+  geographyId: string,
+  venues: CatalogVenue[]
+): CatalogListing[] {
+  return rows.filter(
+    (r) => listingGeographyId(r, venues) === geographyId
+  );
+}
+
+function prioritizedSorted(
+  rows: CatalogListing[],
+  geographyId: string,
+  venues: CatalogVenue[]
+): CatalogListing[] {
+  return rowsInGeography(rows, geographyId, venues)
+    .filter((r) => r.priority > 0)
+    .sort(
+      (a, b) =>
+        a.priority - b.priority || a.venue_name.localeCompare(b.venue_name)
+    );
+}
+
+function nextPriorityValue(
+  rows: CatalogListing[],
+  geographyId: string,
+  venues: CatalogVenue[]
+): number {
+  const max = rowsInGeography(rows, geographyId, venues).reduce(
+    (m, r) => (r.priority > m ? r.priority : m),
+    0
+  );
   return max + 1;
+}
+
+function venuesForGeography(
+  venues: CatalogVenue[],
+  geographyId: string
+): CatalogVenue[] {
+  return venues.filter((v) => v.geography_id === geographyId);
+}
+
+function areaNamesForGeography(
+  areas: CatalogArea[],
+  geographyId: string,
+  rows: CatalogListing[],
+  venues: CatalogVenue[]
+): string[] {
+  const names = new Set(
+    areas
+      .filter((a) => a.geography_id === geographyId)
+      .map((a) => a.long_name)
+  );
+  for (const r of rows) {
+    if (listingGeographyId(r, venues) === geographyId && r.area) {
+      names.add(r.area);
+    }
+  }
+  return [...names].sort();
 }
 
 type PatchFn = (id: string, patch: Partial<Draft>) => void;
@@ -102,7 +163,9 @@ function PriorityRankControls({
 /** Stacked editable card — primary mobile editing surface for Deals/Events. */
 function ListingCard({
   row,
+  geographies,
   venues,
+  allVenues,
   areaOptions,
   maxPriority,
   onPatch,
@@ -111,7 +174,9 @@ function ListingCard({
   onMovePriority,
 }: {
   row: CatalogListing;
+  geographies: CatalogGeography[];
   venues: CatalogVenue[];
+  allVenues: CatalogVenue[];
   areaOptions: string[];
   maxPriority: number;
   onPatch: PatchFn;
@@ -120,6 +185,8 @@ function ListingCard({
   onMovePriority: (id: string, direction: "up" | "down") => void;
 }) {
   const isPrioritized = row.priority > 0;
+  const rowGeoId =
+    listingGeographyId(row, allVenues) ?? geographies[0]?.id ?? "";
 
   return (
     <li className={`listing-card${isPrioritized ? " listing-card--priority" : ""}`}>
@@ -133,10 +200,44 @@ function ListingCard({
         />
       )}
       <label>
+        Geography
+        <select
+          value={rowGeoId}
+          onChange={(e) => {
+            const geoId = e.target.value;
+            const geoVenues = venuesForGeography(allVenues, geoId);
+            const venueName = geoVenues.some((v) => v.name === row.venue_name)
+              ? row.venue_name
+              : (geoVenues[0]?.name ?? row.venue_name);
+            const area =
+              geoVenues.find((v) => v.name === venueName)?.area ?? row.area;
+            onPatch(row.id, {
+              geography_id: geoId,
+              venue_name: venueName,
+              area,
+            });
+          }}
+        >
+          {geographies.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         Venue
         <select
           value={row.venue_name}
-          onChange={(e) => onPatch(row.id, { venue_name: e.target.value })}
+          onChange={(e) => {
+            const name = e.target.value;
+            const v = allVenues.find((x) => x.name === name);
+            onPatch(row.id, {
+              venue_name: name,
+              geography_id: v?.geography_id ?? row.geography_id,
+              area: v?.area ?? row.area,
+            });
+          }}
         >
           {venues.map((v) => (
             <option key={v.id} value={v.name}>
@@ -263,6 +364,8 @@ export function ListingsPanel() {
   const [rows, setRows] = useState<CatalogListing[]>([]);
   const [venues, setVenues] = useState<CatalogVenue[]>([]);
   const [areas, setAreas] = useState<CatalogArea[]>([]);
+  const [geographies, setGeographies] = useState<CatalogGeography[]>([]);
+  const [filterGeographyId, setFilterGeographyId] = useState<string>("");
   const [draft, setDraft] = useState<Draft>(blank());
   const [draftPriorityOn, setDraftPriorityOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,9 +374,10 @@ export function ListingsPanel() {
   const [priorityMode, setPriorityMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CatalogListing | null>(null);
 
   const load = useCallback(async () => {
-    const [listingsRes, venuesRes, areasRes] = await Promise.all([
+    const [listingsRes, venuesRes, areasRes, geographiesRes] = await Promise.all([
       supabase
         .from("catalog_listings")
         .select("*")
@@ -287,20 +391,39 @@ export function ListingsPanel() {
         .from("catalog_areas")
         .select("*")
         .order("sort_order", { ascending: true }),
+      supabase
+        .from("catalog_geographies")
+        .select("*")
+        .order("sort_order", { ascending: true }),
     ]);
     if (listingsRes.error) setError(listingsRes.error.message);
     else {
       setError(null);
       setRows((listingsRes.data ?? []) as CatalogListing[]);
     }
-    if (!venuesRes.error) {
-      const v = (venuesRes.data ?? []) as CatalogVenue[];
-      setVenues(v);
-      setDraft((d) => (d.venue_name ? d : blank(v[0]?.name ?? "")));
-    }
+    const v = (venuesRes.data ?? []) as CatalogVenue[];
+    if (!venuesRes.error) setVenues(v);
     if (!areasRes.error) {
       setAreas((areasRes.data ?? []) as CatalogArea[]);
     }
+    const g = (geographiesRes.data ?? []) as CatalogGeography[];
+    if (!geographiesRes.error) {
+      setGeographies(g);
+      setFilterGeographyId((prev) => {
+        if (prev) return prev;
+        const def = g.find((x) => x.is_default) ?? g[0];
+        return def?.id ?? "";
+      });
+    }
+    setDraft((d) => {
+      if (d.geography_id) return d;
+      const def = g.find((x) => x.is_default) ?? g[0];
+      const geoId = def?.id ?? null;
+      const firstVenue = geoId
+        ? v.find((ven) => ven.geography_id === geoId)
+        : v[0];
+      return blank(firstVenue?.name ?? "", geoId);
+    });
   }, []);
 
   useEffect(() => {
@@ -308,25 +431,30 @@ export function ListingsPanel() {
   }, [load]);
 
   const areaNames = useMemo(() => {
-    const names = new Set(areas.map((a) => a.long_name));
-    for (const r of rows) {
-      if (r.area) names.add(r.area);
-    }
-    return [...names].sort();
-  }, [areas, rows]);
+    if (!filterGeographyId) return [];
+    return areaNamesForGeography(areas, filterGeographyId, rows, venues);
+  }, [areas, filterGeographyId, rows, venues]);
+
+  const draftGeographyId = draft.geography_id ?? filterGeographyId;
+
+  const draftVenues = useMemo(
+    () => (draftGeographyId ? venuesForGeography(venues, draftGeographyId) : venues),
+    [venues, draftGeographyId]
+  );
 
   function areasForVenue(venueName: string): string[] {
     const v = venues.find((x) => x.name === venueName);
     if (!v?.geography_id) return areaNames;
-    const scoped = areas
-      .filter((a) => a.geography_id === v.geography_id)
-      .map((a) => a.long_name);
-    if (v.area && !scoped.includes(v.area)) scoped.push(v.area);
-    return scoped.length ? scoped : areaNames;
+    return areaNamesForGeography(areas, v.geography_id, rows, venues);
   }
 
   const visible = useMemo(() => {
     let list = rows;
+    if (filterGeographyId) {
+      list = list.filter(
+        (r) => listingGeographyId(r, venues) === filterGeographyId
+      );
+    }
     if (filterArea) {
       list = list.filter((r) => r.area === filterArea);
     }
@@ -350,11 +478,16 @@ export function ListingsPanel() {
       if (a.area !== b.area) return a.area.localeCompare(b.area);
       return a.venue_name.localeCompare(b.venue_name);
     });
-  }, [rows, filterArea, filterDay, priorityMode]);
+  }, [rows, filterGeographyId, filterArea, filterDay, priorityMode, venues]);
 
-  const maxPriority = useMemo(() => {
-    return rows.reduce((m, r) => (r.priority > m ? r.priority : m), 0);
-  }, [rows]);
+  function maxPriorityForRow(row: CatalogListing): number {
+    const geoId = listingGeographyId(row, venues);
+    if (!geoId) return 0;
+    return rowsInGeography(rows, geoId, venues).reduce(
+      (m, r) => (r.priority > m ? r.priority : m),
+      0
+    );
+  }
 
   async function applyPatches(
     updates: { id: string; patch: Partial<Draft> }[]
@@ -378,9 +511,12 @@ export function ListingsPanel() {
     setBusy(true);
     setError(null);
     setMsg(null);
-    const priority = draftPriorityOn ? nextPriorityValue(rows) : 0;
+    const geoId = draft.geography_id ?? filterGeographyId;
+    const priority =
+      draftPriorityOn && geoId ? nextPriorityValue(rows, geoId, venues) : 0;
     const payload = {
       ...draft,
+      geography_id: geoId || null,
       priority,
       listing_kind: kindFromLabels(draft.type_labels),
     };
@@ -390,27 +526,42 @@ export function ListingsPanel() {
       setError(err.message);
       return;
     }
-    setDraft(blank(draft.venue_name));
+    const firstVenue = geoId
+      ? venuesForGeography(venues, geoId)[0]
+      : venues[0];
+    setDraft(blank(firstVenue?.name ?? "", geoId || null));
     setDraftPriorityOn(false);
     setMsg("Row added");
     await load();
   }
 
   async function patchRow(id: string, patch: Partial<Draft>) {
-    await applyPatches([{ id, patch }]);
+    const fullPatch = { ...patch };
+    if (patch.venue_name !== undefined) {
+      const v = venues.find((x) => x.name === patch.venue_name);
+      if (v?.geography_id) fullPatch.geography_id = v.geography_id;
+    }
+    await applyPatches([{ id, patch: fullPatch }]);
   }
 
   async function togglePriority(id: string, enabled: boolean) {
     const row = rows.find((r) => r.id === id);
     if (!row) return;
+    const geoId = listingGeographyId(row, venues);
+    if (!geoId) return;
     if (enabled) {
       if (row.priority > 0) return;
-      await applyPatches([{ id, patch: { priority: nextPriorityValue(rows) } }]);
+      await applyPatches([
+        { id, patch: { priority: nextPriorityValue(rows, geoId, venues) } },
+      ]);
       return;
     }
     if (row.priority <= 0) return;
-    // Clear this deal and renumber remaining priorities 1…n with no gaps.
-    const remaining = prioritizedSorted(rows.filter((r) => r.id !== id));
+    const remaining = prioritizedSorted(
+      rows.filter((r) => r.id !== id),
+      geoId,
+      venues
+    );
     const updates: { id: string; patch: Partial<Draft> }[] = [
       { id, patch: { priority: 0 } },
       ...remaining.map((r, i) => ({
@@ -424,9 +575,12 @@ export function ListingsPanel() {
   async function movePriority(id: string, direction: "up" | "down") {
     const row = rows.find((r) => r.id === id);
     if (!row || row.priority <= 0) return;
+    const geoId = listingGeographyId(row, venues);
+    if (!geoId) return;
     const targetRank = direction === "up" ? row.priority - 1 : row.priority + 1;
     if (targetRank < 1) return;
-    const other = rows.find((r) => r.priority === targetRank);
+    const scoped = rowsInGeography(rows, geoId, venues);
+    const other = scoped.find((r) => r.priority === targetRank);
     if (!other) return;
     await applyPatches([
       { id: row.id, patch: { priority: targetRank } },
@@ -434,9 +588,11 @@ export function ListingsPanel() {
     ]);
   }
 
-  async function removeRow(id: string) {
-    if (!confirm("Delete this listing?")) return;
-    const row = rows.find((r) => r.id === id);
+  async function confirmDeleteListing() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    const row = deleteTarget;
+    setError(null);
     const { error: err } = await supabase
       .from("catalog_listings")
       .delete()
@@ -445,8 +601,14 @@ export function ListingsPanel() {
       setError(err.message);
       return;
     }
-    if (row && row.priority > 0) {
-      const remaining = prioritizedSorted(rows.filter((r) => r.id !== id));
+    setDeleteTarget(null);
+    const geoId = listingGeographyId(row, venues);
+    if (row.priority > 0 && geoId) {
+      const remaining = prioritizedSorted(
+        rows.filter((r) => r.id !== id),
+        geoId,
+        venues
+      );
       await applyPatches(
         remaining.map((r, i) => ({
           id: r.id,
@@ -458,6 +620,11 @@ export function ListingsPanel() {
     }
   }
 
+  function listingDeleteLabel(row: CatalogListing): string {
+    if (row.title.trim()) return row.title.trim();
+    return row.venue_name;
+  }
+
   return (
     <div className="listings-panel">
       <h2>Deals &amp; Events</h2>
@@ -466,11 +633,43 @@ export function ListingsPanel() {
         (0=Sun…6=Sat), priority (1 = highest; 0 = none), active.
       </p>
       <p className="muted listings-help-mobile">
-        Edit each deal as a card. Filter by area or day, then tap fields to
-        update. Use Priority mode to reorder featured deals.
+        Edit each deal as a card. Filter by geography, area, or day, then tap
+        fields to update. Priority mode shows featured deals for the selected
+        geography only.
       </p>
 
       <div className="listings-toolbar">
+        <label>
+          Geography{" "}
+          <select
+            value={filterGeographyId}
+            onChange={(e) => {
+              const geoId = e.target.value;
+              setFilterGeographyId(geoId);
+              setFilterArea("");
+              const geoVenues = venuesForGeography(venues, geoId);
+              const firstVenue = geoVenues[0];
+              const scopedAreas = areaNamesForGeography(
+                areas,
+                geoId,
+                rows,
+                venues
+              );
+              setDraft({
+                ...draft,
+                geography_id: geoId,
+                venue_name: firstVenue?.name ?? "",
+                area: firstVenue?.area ?? scopedAreas[0] ?? draft.area,
+              });
+            }}
+          >
+            {geographies.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Filter area{" "}
           <select
@@ -511,17 +710,52 @@ export function ListingsPanel() {
 
       <form className="grid" onSubmit={createRow}>
         <label>
+          Geography
+          <select
+            value={draftGeographyId}
+            onChange={(e) => {
+              const geoId = e.target.value;
+              const geoVenues = venuesForGeography(venues, geoId);
+              const firstVenue = geoVenues[0];
+              const areaOptions = areaNamesForGeography(
+                areas,
+                geoId,
+                rows,
+                venues
+              );
+              setDraft({
+                ...draft,
+                geography_id: geoId,
+                venue_name: firstVenue?.name ?? "",
+                area: firstVenue?.area ?? areaOptions[0] ?? draft.area,
+              });
+            }}
+            required
+          >
+            {geographies.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Venue
           <select
             value={draft.venue_name}
             onChange={(e) => {
               const name = e.target.value;
-              const area = venues.find((v) => v.name === name)?.area ?? draft.area;
-              setDraft({ ...draft, venue_name: name, area });
+              const v = venues.find((ven) => ven.name === name);
+              setDraft({
+                ...draft,
+                venue_name: name,
+                geography_id: v?.geography_id ?? draft.geography_id,
+                area: v?.area ?? draft.area,
+              });
             }}
             required
           >
-            {venues.map((v) => (
+            {draftVenues.map((v) => (
               <option key={v.id} value={v.name}>
                 {v.name}
               </option>
@@ -572,8 +806,8 @@ export function ListingsPanel() {
             onChange={(e) => setDraftPriorityOn(e.target.checked)}
           />
           Priority
-          {draftPriorityOn
-            ? ` (will be #${nextPriorityValue(rows)})`
+          {draftPriorityOn && draftGeographyId
+            ? ` (will be #${nextPriorityValue(rows, draftGeographyId, venues)})`
             : " (off)"}
         </label>
         <label>
@@ -631,6 +865,7 @@ export function ListingsPanel() {
         <table>
           <thead>
             <tr>
+              <th>Geography</th>
               <th>Venue</th>
               <th>Title</th>
               <th>Time</th>
@@ -644,16 +879,55 @@ export function ListingsPanel() {
             </tr>
           </thead>
           <tbody>
-            {visible.map((r) => (
+            {visible.map((r) => {
+              const rowGeoId =
+                listingGeographyId(r, venues) ?? geographies[0]?.id ?? "";
+              const rowVenues = rowGeoId
+                ? venuesForGeography(venues, rowGeoId)
+                : venues;
+              const rowMaxPriority = maxPriorityForRow(r);
+              return (
               <tr key={r.id}>
                 <td>
                   <select
-                    value={r.venue_name}
-                    onChange={(e) =>
-                      void patchRow(r.id, { venue_name: e.target.value })
-                    }
+                    value={rowGeoId}
+                    onChange={(e) => {
+                      const geoId = e.target.value;
+                      const geoVenues = venuesForGeography(venues, geoId);
+                      const venueName = geoVenues.some(
+                        (v) => v.name === r.venue_name
+                      )
+                        ? r.venue_name
+                        : (geoVenues[0]?.name ?? r.venue_name);
+                      const v = venues.find((x) => x.name === venueName);
+                      void patchRow(r.id, {
+                        geography_id: geoId,
+                        venue_name: venueName,
+                        area: v?.area ?? r.area,
+                      });
+                    }}
                   >
-                    {venues.map((v) => (
+                    {geographies.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <select
+                    value={r.venue_name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      const v = venues.find((x) => x.name === name);
+                      void patchRow(r.id, {
+                        venue_name: name,
+                        geography_id: v?.geography_id ?? r.geography_id,
+                        area: v?.area ?? r.area,
+                      });
+                    }}
+                  >
+                    {rowVenues.map((v) => (
                       <option key={v.id} value={v.name}>
                         {v.name}
                       </option>
@@ -766,7 +1040,7 @@ export function ListingsPanel() {
                       <PriorityRankControls
                         priority={r.priority}
                         canMoveUp={r.priority > 1}
-                        canMoveDown={r.priority < maxPriority}
+                        canMoveDown={r.priority < rowMaxPriority}
                         onMoveUp={() => void movePriority(r.id, "up")}
                         onMoveDown={() => void movePriority(r.id, "down")}
                       />
@@ -786,13 +1060,14 @@ export function ListingsPanel() {
                   <button
                     type="button"
                     className="danger"
-                    onClick={() => void removeRow(r.id)}
+                    onClick={() => setDeleteTarget(r)}
                   >
                     Del
                   </button>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>
@@ -802,20 +1077,56 @@ export function ListingsPanel() {
         {visible.length === 0 ? (
           <li className="muted">No listings for this filter.</li>
         ) : (
-          visible.map((r) => (
+          visible.map((r) => {
+            const rowGeoId =
+              listingGeographyId(r, venues) ?? geographies[0]?.id ?? "";
+            const rowVenues = rowGeoId
+              ? venuesForGeography(venues, rowGeoId)
+              : venues;
+            return (
             <ListingCard
               key={r.id}
               row={r}
+              geographies={geographies}
+              venues={rowVenues}
+              allVenues={venues}
               areaOptions={areasForVenue(r.venue_name)}
-              maxPriority={maxPriority}
+              maxPriority={maxPriorityForRow(r)}
               onPatch={(id, patch) => void patchRow(id, patch)}
-              onRemove={(id) => void removeRow(id)}
+              onRemove={(id) => {
+                const row = rows.find((r) => r.id === id);
+                if (row) setDeleteTarget(row);
+              }}
               onTogglePriority={(id, enabled) => void togglePriority(id, enabled)}
               onMovePriority={(id, dir) => void movePriority(id, dir)}
             />
-          ))
+            );
+          })
         )}
       </ul>
+
+      {deleteTarget && (
+        <ConfirmDeleteDialog
+          title="Delete deal?"
+          titleId="listing-delete-title"
+          message={
+            <>
+              Are you sure you want to delete{" "}
+              <strong>{listingDeleteLabel(deleteTarget)}</strong>
+              {deleteTarget.title.trim() ? (
+                <>
+                  {" "}
+                  at <strong>{deleteTarget.venue_name}</strong>
+                </>
+              ) : null}
+              ? This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete deal"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDeleteListing()}
+        />
+      )}
     </div>
   );
 }
