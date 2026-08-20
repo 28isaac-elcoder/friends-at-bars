@@ -15,6 +15,7 @@ struct ChatView: View {
     @State private var selectedIds: Set<UUID> = []
     @State private var avatarPickerTarget: ChatAvatarPickerTarget?
     @FocusState private var composerFocused: Bool
+    @State private var regionWarningFlash = false
 
     private var useLocal: Bool { testMode.uiEnabled && testMode.useMockCheckIns }
     private var remaining: Int { AppConfig.maxChatChars - draft.count }
@@ -27,34 +28,66 @@ struct ChatView: View {
         }
     }
 
-    /// Production: need OS location + at a bar. Test local: gated by simulateLocationAllowed.
+    /// Production: When In Use or Always. Test local: simulateLocationAllowed.
     private var needLocationGate: Bool {
         if useLocal { return !testMode.simulateLocationAllowed }
-        return !locationAuth.isAuthorized
+        return !locationAuth.canUseChatLocation
     }
 
-    private var atVenue: Bool {
-        if useLocal {
-            return testMode.simulateLocationAllowed
-                && !localChat.simulatedVenueName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        return locationAuth.isAuthorized && appModel.lastVenueName != nil
+    private var viewedGeography: CatalogGeography? {
+        appModel.resolvedGeography
     }
 
-    private var effectiveVenueName: String? {
+    /// User GPS must be inside the geography they are viewing to send.
+    private var canSendInViewedGeography: Bool {
+        if useLocal && testMode.simulateLocationAllowed { return true }
+        guard let viewed = viewedGeography, let gps = appModel.gpsGeography else { return false }
+        return viewed.id == gps.id
+    }
+
+    private var sendVenueName: String? {
         if useLocal {
-            guard testMode.simulateLocationAllowed else { return nil }
             let v = localChat.simulatedVenueName.trimmingCharacters(in: .whitespacesAndNewlines)
             return v.isEmpty ? nil : v
         }
-        return appModel.lastVenueName
+        if let venue = appModel.lastVenueName {
+            return venue
+        }
+        guard let coord = appModel.lastKnownCoordinate else { return nil }
+        var best: (name: String, distance: Double)?
+        for venue in appModel.scopedVenues {
+            let meters = GeographyResolver.haversineMeters(
+                lat1: coord.latitude,
+                lon1: coord.longitude,
+                lat2: venue.latitude,
+                lon2: venue.longitude
+            )
+            guard meters <= Double(venue.radius_m) else { continue }
+            if best == nil || meters < best!.distance {
+                best = (venue.name, meters)
+            }
+        }
+        return best?.name
+    }
+
+    private var regionGateMessage: String {
+        let name = viewedGeography?.name ?? "this"
+        return "Must be located within \(name) region to send chat"
     }
 
     private var displayedPosts: [ChatPost] {
         let feed = useLocal ? localChat.feed(sort: sort) : posts
-        let names = Set(appModel.scopedVenues.map(\.name))
-        guard !names.isEmpty else { return feed }
-        return feed.filter { names.contains($0.venue_name) }
+        guard let geoId = viewedGeography?.id else { return [] }
+        let venueNames = Set(appModel.scopedVenues.map(\.name))
+        return feed.filter { post in
+            if let postGeo = post.geography_id {
+                return postGeo == geoId
+            }
+            if post.venue_name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return false
+            }
+            return venueNames.contains(post.venue_name)
+        }
     }
 
     var body: some View {
@@ -83,7 +116,8 @@ struct ChatView: View {
                         if useLocal {
                             testMode.simulateLocationAllowed = true
                         } else {
-                            locationAuth.requestAllowLocation()
+                            locationAuth.requestChatLocation()
+                            startChatLocationIfNeeded()
                         }
                     }
                     .padding(.horizontal)
@@ -229,6 +263,7 @@ struct ChatView: View {
             }
             .task {
                 await load()
+                startChatLocationIfNeeded()
                 if useLocal, !venueOptions.isEmpty {
                     let names = Set(venueOptions.map(\.name))
                     if !names.contains(localChat.simulatedVenueName) {
@@ -238,12 +273,16 @@ struct ChatView: View {
                     }
                 }
             }
+            .onDisappear {
+                ChatLocationReader.shared.stop()
+            }
             .refreshable { await load() }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 exitSelectMode()
                 Task { await load() }
             }
-            .onChange(of: locationAuth.isAuthorized) { _, _ in
+            .onChange(of: locationAuth.canUseChatLocation) { _, _ in
+                startChatLocationIfNeeded()
                 Task { await load() }
             }
             .onChange(of: testMode.simulateLocationAllowed) { _, _ in
@@ -287,9 +326,12 @@ struct ChatView: View {
 
                 HStack(alignment: .center, spacing: 8) {
                     HStack(spacing: 6) {
-                        Text(post.venue_name)
-                            .font(.caption)
-                            .foregroundStyle(metaColor)
+                        let venueLabel = post.venue_name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !venueLabel.isEmpty {
+                            Text(venueLabel)
+                                .font(.caption)
+                                .foregroundStyle(metaColor)
+                        }
                         if post.author_id == TestChatStore.otherAuthorId {
                             Text("other")
                                 .font(.caption2)
@@ -362,6 +404,7 @@ struct ChatView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Picker("Bar", selection: $localChat.simulatedVenueName) {
+                        Text("(No bar)").tag("")
                         ForEach(venueOptions) { v in
                             Text("\(v.name)").tag(v.name)
                         }
@@ -377,18 +420,27 @@ struct ChatView: View {
                 }
             }
 
-            if !useLocal && !atVenue {
-                Text("Must be at a Bar to Chat")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+            if !canSendInViewedGeography {
+                Button {
+                    flashRegionWarning()
+                } label: {
+                    HStack {
+                        Text(regionGateMessage)
+                            .font(.system(size: 17))
+                            .foregroundStyle(regionWarningFlash ? Color.red : Color.secondary)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(10)
                     .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(regionGateMessage)
             } else {
                 if !useLocal {
                     HStack(alignment: .center, spacing: 8) {
-                        if let venue = effectiveVenueName {
+                        if let venue = sendVenueName {
                             Text("Posting from \(venue)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -425,7 +477,6 @@ struct ChatView: View {
                     }
                     .disabled(
                         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || !atVenue
                             || overCharLimit
                     )
                 }
@@ -438,10 +489,33 @@ struct ChatView: View {
         if useLocal && localChat.sender == .other {
             return "Message as another user…"
         }
-        if let venue = effectiveVenueName {
+        if let venue = sendVenueName {
             return "What's happening at \(venue)?"
         }
         return "Say something…"
+    }
+
+    private func startChatLocationIfNeeded() {
+        guard !needLocationGate else { return }
+        ChatLocationReader.shared.start { coord in
+            appModel.lastKnownCoordinate = coord
+        }
+    }
+
+    private func flashRegionWarning() {
+        guard !canSendInViewedGeography else { return }
+        Task { @MainActor in
+            for _ in 0 ..< 2 {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    regionWarningFlash = true
+                }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    regionWarningFlash = false
+                }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+        }
     }
 
     private func exitSelectMode() {
@@ -526,10 +600,11 @@ struct ChatView: View {
     }
 
     private func send() async {
-        guard let venue = effectiveVenueName else {
-            error = needLocationGate ? "Allow Location to Chat" : "Must be at a Bar to Chat"
+        guard canSendInViewedGeography else {
+            flashRegionWarning()
             return
         }
+        guard let geo = viewedGeography else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard trimmed.count <= AppConfig.maxChatChars else {
@@ -542,20 +617,35 @@ struct ChatView: View {
                 ? avatarStore.otherSelection
                 : avatarStore.selection
             if useLocal {
-                try localChat.createPost(body: trimmed, avatar: avatar)
+                try localChat.createPost(
+                    body: trimmed,
+                    avatar: avatar,
+                    venueName: sendVenueName,
+                    geographyId: geo.id
+                )
                 draft = ""
                 composerFocused = false
-                DiagnosticLog.shared.append(category: "chat", message: "Local post at \(venue)")
+                let venueLog = sendVenueName ?? "(no bar)"
+                DiagnosticLog.shared.append(category: "chat", message: "Local post at \(venueLog)")
             } else {
+                guard let coord = appModel.lastKnownCoordinate else {
+                    error = regionGateMessage
+                    flashRegionWarning()
+                    return
+                }
                 try await ChatService.createPost(
                     body: trimmed,
-                    venueName: venue,
+                    geographyId: geo.id,
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                    venueName: sendVenueName,
                     avatarIcon: avatar.icon.rawValue,
                     avatarColor: avatar.color.rawValue
                 )
                 draft = ""
                 composerFocused = false
-                DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venue)")
+                let venueLog = sendVenueName ?? "(no bar)"
+                DiagnosticLog.shared.append(category: "chat", message: "Posted at \(venueLog)")
                 await load()
             }
             error = nil

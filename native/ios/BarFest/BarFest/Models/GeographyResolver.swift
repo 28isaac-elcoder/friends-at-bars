@@ -22,6 +22,26 @@ enum GeographyResolver {
         return R * c
     }
 
+    /// Strict: returns geography only when coordinate is inside its radius (no default fallback).
+    static func geographyContaining(
+        coordinate: CLLocationCoordinate2D?,
+        from geographies: [CatalogGeography]
+    ) -> CatalogGeography? {
+        guard let coordinate else { return nil }
+        let inside = geographies.compactMap { geo -> (CatalogGeography, Double)? in
+            let meters = haversineMeters(
+                lat1: coordinate.latitude,
+                lon1: coordinate.longitude,
+                lat2: geo.latitude,
+                lon2: geo.longitude
+            )
+            let radius = geo.radius_miles * milesToMeters
+            guard meters <= radius else { return nil }
+            return (geo, meters)
+        }
+        return inside.min(by: { $0.1 < $1.1 })?.0
+    }
+
     static func automatic(
         coordinate: CLLocationCoordinate2D?,
         from geographies: [CatalogGeography]

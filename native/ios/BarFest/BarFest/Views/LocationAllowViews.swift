@@ -141,7 +141,7 @@ struct ChatLocationInlineGate: View {
         LocationInlineGate(
             systemImage: "bubble.left.and.bubble.right.fill",
             title: "Be a Part of The Conversation",
-            subtitleAlways: "Always allow location to Chat With Others",
+            subtitleAlways: "Enable Location to Chat With Others",
             subtitleEnable: "Enable Location to Chat With Others",
             cta: "Start Chatting!",
             onAllow: onAllow

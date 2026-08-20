@@ -14,12 +14,32 @@ struct BarFestApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            AppRootView()
                 .environmentObject(appModel)
                 .environmentObject(testMode)
-                .task {
-                    await appModel.bootstrap()
+        }
+    }
+}
+
+/// Hosts main UI plus cold-start splash overlay (once per process launch).
+private struct AppRootView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var showSplash = true
+
+    var body: some View {
+        ZStack {
+            RootTabView()
+            if showSplash {
+                StartupSplashView(isBootstrapComplete: appModel.initialBootstrapFinished) {
+                    showSplash = false
                 }
+                .transition(.opacity)
+                .zIndex(1)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: showSplash)
+        .task {
+            await appModel.bootstrap()
         }
     }
 }
@@ -35,6 +55,7 @@ final class AppModel: ObservableObject {
     @Published var lastVenueName: String?
     @Published var errorMessage: String?
     @Published var isRefreshing = false
+    @Published var initialBootstrapFinished = false
     @Published var lastKnownCoordinate: CLLocationCoordinate2D?
     @Published var manualGeographyId: UUID?
 
@@ -79,6 +100,14 @@ final class AppModel: ObservableObject {
         return visible.filter { $0.geography_id == geo.id }
     }
 
+    /// GPS-derived geography (no manual banner override). Nil if outside all regions.
+    var gpsGeography: CatalogGeography? {
+        GeographyResolver.geographyContaining(
+            coordinate: lastKnownCoordinate,
+            from: geographies
+        )
+    }
+
     func setManualGeography(_ id: UUID?) {
         manualGeographyId = id
         if let id {
@@ -89,6 +118,7 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
+        defer { initialBootstrapFinished = true }
         DiagnosticLog.shared.append(
             category: "system",
             message: "Bootstrap bundle=\(Bundle.main.bundleIdentifier ?? "?") testUI=\(DevTestMode.isUIEnabled)"

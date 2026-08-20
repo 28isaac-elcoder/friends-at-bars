@@ -55,6 +55,7 @@ struct ChatPost: Codable, Identifiable, Hashable {
     let author_id: String
     let body: String
     let venue_name: String
+    let geography_id: UUID?
     var score: Int
     var is_hidden: Bool
     let created_at: String

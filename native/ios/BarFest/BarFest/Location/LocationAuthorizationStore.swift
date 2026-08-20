@@ -15,6 +15,16 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
         status == .authorizedAlways
     }
 
+    /// Chat works with When In Use or Always.
+    var canUseChatLocation: Bool {
+        switch status {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// True when OS location is on but not Always — UI should push upgrade, not unlock live features.
     var needsAlwaysUpgrade: Bool {
         status == .authorizedWhenInUse
@@ -108,6 +118,27 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
         )
     }
 
+    /// Chat gate: When In Use is sufficient; starts lightweight GPS reader.
+    func requestChatLocation() {
+        refresh()
+        switch status {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        case .authorizedWhenInUse, .authorizedAlways:
+            break
+        @unknown default:
+            manager.requestWhenInUseAuthorization()
+        }
+        DiagnosticLog.shared.append(
+            category: "location",
+            message: "Chat location request status=\(status.rawValue)"
+        )
+    }
+
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             self.status = manager.authorizationStatus
@@ -128,7 +159,7 @@ final class LocationAuthorizationStore: NSObject, ObservableObject, CLLocationMa
             } else if manager.authorizationStatus == .authorizedWhenInUse {
                 DiagnosticLog.shared.append(
                     category: "location",
-                    message: "authChanged WhenInUse — live_locations upserts need Always",
+                    message: "authChanged WhenInUse — chat enabled; live headcounts need Always",
                     level: "warn"
                 )
             }

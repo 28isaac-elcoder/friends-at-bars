@@ -161,7 +161,6 @@ struct ActivitiesView: View {
             .background(Color.black.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await reload(fromPullToRefresh: true) }
-            .task { await reload() }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
             }

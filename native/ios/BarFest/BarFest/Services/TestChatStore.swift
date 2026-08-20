@@ -37,7 +37,12 @@ final class TestChatStore: ObservableObject {
         return active.sorted { $0.created_at > $1.created_at }
     }
 
-    func createPost(body: String, avatar: ChatAvatarSelection) throws {
+    func createPost(
+        body: String,
+        avatar: ChatAvatarSelection,
+        venueName: String?,
+        geographyId: UUID
+    ) throws {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ChatLocalError.message("Message cannot be empty") }
         guard trimmed.count <= AppConfig.maxChatChars else {
@@ -47,9 +52,7 @@ final class TestChatStore: ObservableObject {
             sender == .other
             ? Self.otherAuthorId
             : AnonymousIdentity.userId()
-        let venue = simulatedVenueName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Test Location 1"
-            : simulatedVenueName
+        let venue = venueName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let now = ISO8601DateFormatter().string(from: Date())
         let expires = ISO8601DateFormatter().string(
             from: Date().addingTimeInterval(24 * 60 * 60)
@@ -59,6 +62,7 @@ final class TestChatStore: ObservableObject {
             author_id: author,
             body: trimmed,
             venue_name: venue,
+            geography_id: geographyId,
             score: 0,
             is_hidden: false,
             created_at: now,

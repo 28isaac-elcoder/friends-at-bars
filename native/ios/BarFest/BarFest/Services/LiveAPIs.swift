@@ -18,31 +18,46 @@ enum ChatService {
 
     static func createPost(
         body: String,
-        venueName: String,
+        geographyId: UUID,
+        latitude: Double,
+        longitude: Double,
+        venueName: String?,
         avatarIcon: String,
         avatarColor: String
     ) async throws {
         let uid = String(AnonymousIdentity.userId().prefix(12))
+        let venueLabel = venueName ?? ""
         DiagnosticLog.log(
             category: "location",
-            message: "chat create_chat_post venue=\(venueName) userId=\(uid)… freshnessWindowSec=\(AppConfig.liveLocationChatFreshnessSeconds)"
+            message: """
+            chat create_chat_post geo=\(geographyId.uuidString.prefix(8))… \
+            venue=\(venueLabel.isEmpty ? "(none)" : venueLabel) userId=\(uid)…
+            """
         )
+        var params: [String: Any] = [
+            "p_author_id": AnonymousIdentity.userId(),
+            "p_body": body,
+            "p_geography_id": geographyId.uuidString,
+            "p_latitude": latitude,
+            "p_longitude": longitude,
+            "p_avatar_icon": avatarIcon,
+            "p_avatar_color": avatarColor,
+        ]
+        if let venueName, !venueName.isEmpty {
+            params["p_venue_name"] = venueName
+        } else {
+            params["p_venue_name"] = NSNull()
+        }
         do {
-            try await SupabaseClient.shared.rpcVoid("create_chat_post", params: [
-                "p_author_id": AnonymousIdentity.userId(),
-                "p_body": body,
-                "p_venue_name": venueName,
-                "p_avatar_icon": avatarIcon,
-                "p_avatar_color": avatarColor,
-            ])
+            try await SupabaseClient.shared.rpcVoid("create_chat_post", params: params)
             DiagnosticLog.log(
                 category: "location",
-                message: "chat create_chat_post ok venue=\(venueName)"
+                message: "chat create_chat_post ok venue=\(venueLabel.isEmpty ? "(none)" : venueLabel)"
             )
         } catch {
             DiagnosticLog.log(
                 category: "location",
-                message: "chat create_chat_post failed venue=\(venueName): \(error.localizedDescription)",
+                message: "chat create_chat_post failed: \(error.localizedDescription)",
                 level: "error"
             )
             throw error
