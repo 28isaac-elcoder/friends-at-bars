@@ -13,6 +13,23 @@ struct MapScreen: View {
         )
     )
     @State private var selectedVenue: CatalogVenue?
+    @State private var venueSearch = ""
+    @FocusState private var searchFocused: Bool
+
+    private var searchQuery: String {
+        venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var searchResults: [CatalogVenue] {
+        guard !searchQuery.isEmpty else { return [] }
+        return appModel.scopedVenues
+            .filter { $0.name.localizedCaseInsensitiveContains(searchQuery) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var showSearchResults: Bool {
+        searchFocused || !searchQuery.isEmpty
+    }
 
     /// Live OS permission, or Test Mode mock + simulate-location toggle.
     private var mapUnlocked: Bool {
@@ -49,6 +66,7 @@ struct MapScreen: View {
                 Map(position: $position) {
                     ForEach(appModel.scopedVenues) { venue in
                         let count = appModel.venueCounts[venue.name, default: 0]
+                        let isSelected = selectedVenue?.id == venue.id
                         Annotation(
                             venue.name,
                             coordinate: CLLocationCoordinate2D(
@@ -57,12 +75,13 @@ struct MapScreen: View {
                             )
                         ) {
                             Button {
-                                selectedVenue = venue
+                                selectVenue(venue)
                             } label: {
                                 Image(systemName: "mappin.circle.fill")
-                                    .font(.title2)
+                                    .font(isSelected ? .system(size: 44) : .title2)
                                     .foregroundStyle(pinColor(count: count, maxCount: maxAttendance))
                                     .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                                    .animation(.easeInOut(duration: 0.2), value: isSelected)
                             }
                             .buttonStyle(.plain)
                         }
@@ -78,7 +97,7 @@ struct MapScreen: View {
                 .mapControls {
                     MapCompass()
                 }
-                .disabled(!mapUnlocked)
+                .disabled(!mapUnlocked || showSearchResults)
 
                 if !mapUnlocked {
                     if testMode.uiEnabled && testMode.useMockCheckIns {
@@ -88,65 +107,242 @@ struct MapScreen: View {
                     }
                 }
 
-                if let venue = selectedVenue {
+                if let venue = selectedVenue, !showSearchResults {
                     venuePopup(venue)
+                        .zIndex(4)
+                }
+
+                if mapUnlocked {
+                    ZStack(alignment: .top) {
+                        if showSearchResults {
+                            Color.black.opacity(0.45)
+                                .ignoresSafeArea()
+                                .onTapGesture { dismissSearch() }
+                        }
+
+                        VStack(spacing: 10) {
+                            searchBar
+                                .padding(.horizontal, 12)
+
+                            HStack {
+                                if testMode.uiEnabled && testMode.useMockCheckIns {
+                                    simulateLocationButton
+                                }
+                                Spacer(minLength: 0)
+                                locateMeButton
+                            }
+                            .padding(.horizontal, 12)
+
+                            if showSearchResults {
+                                searchResultsPanel
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .zIndex(5)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    EmptyView()
-                }
-                if testMode.uiEnabled && testMode.useMockCheckIns {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            testMode.simulateLocationAllowed.toggle()
-                            DiagnosticLog.shared.append(
-                                category: "system",
-                                message: "Map simulate location allowed=\(testMode.simulateLocationAllowed)"
-                            )
-                        } label: {
-                            Image(systemName: testMode.simulateLocationAllowed
-                                  ? "location.fill"
-                                  : "location.slash")
-                        }
-                        .accessibilityLabel(
-                            testMode.simulateLocationAllowed
-                                ? "Simulate location on"
-                                : "Simulate location off"
-                        )
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation {
-                            position = .userLocation(fallback: .automatic)
-                        }
-                    } label: {
-                        Image(systemName: "location")
-                    }
-                    .disabled(!mapUnlocked)
-                    .accessibilityLabel("Center on my location")
-                }
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .onChange(of: testMode.useMockCheckIns) { _, _ in
-                selectedVenue = nil
+                dismissSelection()
                 Task { await appModel.refreshCatalog() }
             }
             .onChange(of: testMode.simulateLocationAllowed) { _, allowed in
-                if !allowed { selectedVenue = nil }
+                if !allowed { dismissSelection() }
             }
             .onAppear {
                 locationAuth.refresh()
                 position = .region(mapRegion)
             }
             .onChange(of: appModel.resolvedGeography?.id) { _, _ in
-                selectedVenue = nil
+                dismissSelection()
                 position = .region(mapRegion)
             }
         }
     }
+
+    // MARK: - Search / floating controls
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search bars", text: $venueSearch)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
+            if !venueSearch.isEmpty {
+                Button {
+                    venueSearch = ""
+                    searchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.95))
+        )
+    }
+
+    private var locateMeButton: some View {
+        Button {
+            withAnimation {
+                position = .userLocation(fallback: .automatic)
+            }
+        } label: {
+            Image(systemName: "location.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.95))
+                )
+                .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Center on my location")
+    }
+
+    private var simulateLocationButton: some View {
+        Button {
+            testMode.simulateLocationAllowed.toggle()
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Map simulate location allowed=\(testMode.simulateLocationAllowed)"
+            )
+        } label: {
+            Image(systemName: testMode.simulateLocationAllowed
+                  ? "location.fill"
+                  : "location.slash")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(testMode.simulateLocationAllowed ? Color.accentColor : .secondary)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.95))
+                )
+                .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            testMode.simulateLocationAllowed
+                ? "Simulate location on"
+                : "Simulate location off"
+        )
+    }
+
+    private var searchResultsPanel: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Color.clear
+                .frame(width: 28)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { dismissSearch() }
+
+            Group {
+                if searchQuery.isEmpty {
+                    Text("Start typing a bar name")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                } else if searchResults.isEmpty {
+                    Text("No bars match that search")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(searchResults) { venue in
+                                Button {
+                                    selectVenue(venue)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(venue.name)
+                                                .font(.body.weight(.medium))
+                                                .foregroundStyle(.primary)
+                                            if !venue.area.isEmpty {
+                                                Text(venue.area)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                Divider().opacity(0.35)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 320)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+
+            Color.clear
+                .frame(width: 28)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { dismissSearch() }
+        }
+    }
+
+    // MARK: - Selection / camera
+
+    private func selectVenue(_ venue: CatalogVenue) {
+        dismissSearch()
+        selectedVenue = venue
+        snapCamera(to: venue)
+    }
+
+    private func dismissSelection() {
+        selectedVenue = nil
+        dismissSearch()
+    }
+
+    private func dismissSearch() {
+        venueSearch = ""
+        searchFocused = false
+        KeyboardObserver.dismiss()
+    }
+
+    /// Centers the pin in the map viewport at a zoom similar to a tapped pin focus.
+    private func snapCamera(to venue: CatalogVenue) {
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: venue.latitude, longitude: venue.longitude),
+            span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.014)
+        )
+        withAnimation(.easeInOut(duration: 0.35)) {
+            position = .region(region)
+        }
+    }
+
+    // MARK: - Gates / popup
 
     /// Soft gate for Test Mode when simulate-location is off (parity with Activities/Chat).
     private var testModeLocationGate: some View {
@@ -188,6 +384,7 @@ struct MapScreen: View {
     @ViewBuilder
     private func venuePopup(_ venue: CatalogVenue) -> some View {
         let count = appModel.venueCounts[venue.name, default: 0]
+        let deals = todaysDeals(for: venue)
         ZStack {
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
@@ -218,14 +415,11 @@ struct MapScreen: View {
                     .buttonStyle(.plain)
                 }
 
-                if count == 0 {
-                    Text("No one checked in live right now")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("\(count) \(count == 1 ? "person" : "people") live at venue")
-                        .font(.subheadline.weight(.semibold))
-                }
+                dealsSection(deals)
+
+                Text(count == 0 ? "No Users at This Time" : "\(count) Users")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(count == 0 ? .secondary : .primary)
 
                 Button {
                     openDirections(to: venue)
@@ -248,6 +442,66 @@ struct MapScreen: View {
             )
             .padding(.horizontal, 24)
         }
+    }
+
+    @ViewBuilder
+    private func dealsSection(_ deals: [CatalogListing]) -> some View {
+        if deals.isEmpty {
+            Text("No deals for today")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+        } else {
+            let content = VStack(alignment: .leading, spacing: 10) {
+                ForEach(deals) { deal in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(dealTitle(deal))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !deal.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(deal.details)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if deals.count > 3 {
+                ScrollView {
+                    content
+                }
+                .frame(maxHeight: 118)
+            } else {
+                content
+            }
+        }
+    }
+
+    private func dealTitle(_ deal: CatalogListing) -> String {
+        let title = deal.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !title.isEmpty { return title }
+        if !deal.time_label.isEmpty { return deal.time_label }
+        return deal.type_labels.first ?? "Deal"
+    }
+
+    private func todaysDeals(for venue: CatalogVenue) -> [CatalogListing] {
+        let day = DayFilter.today.rawValue
+        return appModel.listings
+            .filter { listing in
+                listing.venue_name.caseInsensitiveCompare(venue.name) == .orderedSame
+                    && listing.is_active
+                    && (listing.days_of_week.isEmpty || listing.days_of_week.contains(day))
+            }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.title < rhs.title
+            }
     }
 
     /// Relative heat: white when empty / below ~half of tonight’s busiest bar; bright red at the max.

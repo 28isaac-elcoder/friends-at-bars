@@ -52,4 +52,13 @@ final class DiagnosticLog: ObservableObject {
     func clear() {
         entries.removeAll()
     }
+
+    /// Plain-text dump for pasteboard (newest last).
+    func exportText(limit: Int = 400) -> String {
+        let slice = entries.suffix(limit)
+        let df = ISO8601DateFormatter()
+        return slice.map { entry in
+            "[\(df.string(from: entry.date))] \(entry.level.uppercased()) \(entry.category): \(entry.message)"
+        }.joined(separator: "\n")
+    }
 }

@@ -31,6 +31,7 @@ private struct AppRootView: View {
             RootTabView()
             if showSplash {
                 StartupSplashView(isBootstrapComplete: appModel.initialBootstrapFinished) {
+                    DiagnosticLog.shared.append(category: "system", message: "AppRoot splash overlay removed")
                     showSplash = false
                 }
                 .transition(.opacity)
@@ -39,7 +40,15 @@ private struct AppRootView: View {
         }
         .animation(.easeOut(duration: 0.15), value: showSplash)
         .task {
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "AppRoot bootstrap task start showSplash=\(showSplash)"
+            )
             await appModel.bootstrap()
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "AppRoot bootstrap task returned initialBootstrapFinished=\(appModel.initialBootstrapFinished)"
+            )
         }
     }
 }
@@ -118,17 +127,68 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
-        defer { initialBootstrapFinished = true }
+        let t0 = CFAbsoluteTimeGetCurrent()
         DiagnosticLog.shared.append(
             category: "system",
-            message: "Bootstrap bundle=\(Bundle.main.bundleIdentifier ?? "?") testUI=\(DevTestMode.isUIEnabled)"
+            message: "Bootstrap begin bundle=\(Bundle.main.bundleIdentifier ?? "?") testUI=\(DevTestMode.isUIEnabled)"
         )
+        defer {
+            initialBootstrapFinished = true
+            let elapsed = CFAbsoluteTimeGetCurrent() - t0
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: String(
+                    format: "Bootstrap finished elapsed=%.2fs venues=%d listings=%d geos=%d counts=%d error=%@",
+                    elapsed,
+                    venues.count,
+                    listings.count,
+                    geographies.count,
+                    venueCounts.count,
+                    errorMessage ?? "nil"
+                )
+            )
+        }
+
         await CatalogStore.shared.loadCachedVenuesIfNeeded()
         venues = await CatalogStore.shared.venues
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Bootstrap cache loaded venues=\(venues.count) t=\(String(format: "%.2fs", CFAbsoluteTimeGetCurrent() - t0))"
+        )
+
         if let raw = UserDefaults.standard.string(forKey: manualGeographyKey) {
             manualGeographyId = UUID(uuidString: raw)
         }
-        await refreshCatalog()
+
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Bootstrap refreshCatalog begin t=\(String(format: "%.2fs", CFAbsoluteTimeGetCurrent() - t0))"
+        )
+        // Force-kill cold starts can hang indefinitely on network — don't block splash forever.
+        let catalogTimedOut = await withTimeout(seconds: 18) {
+            await self.refreshCatalog()
+        }
+        if catalogTimedOut {
+            DiagnosticLog.shared.append(
+                category: "error",
+                message: "Bootstrap refreshCatalog TIMED OUT after 18s — continuing with cached/partial data venues=\(venues.count) listings=\(listings.count)",
+                level: "error"
+            )
+            venues = await CatalogStore.shared.venues
+            listings = await CatalogStore.shared.listings
+            geographies = await CatalogStore.shared.geographies
+            areas = await CatalogStore.shared.areas
+        } else {
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Bootstrap refreshCatalog done t=\(String(format: "%.2fs", CFAbsoluteTimeGetCurrent() - t0)) venues=\(venues.count) listings=\(listings.count)"
+            )
+        }
+
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Bootstrap locationBridge.start begin t=\(String(format: "%.2fs", CFAbsoluteTimeGetCurrent() - t0))"
+        )
         locationBridge.start(
             venues: venuesInVisibleGeographies,
             onVenue: { [weak self] name in
@@ -149,6 +209,27 @@ final class AppModel: ObservableObject {
         )
         let state = VenueLiveLocationEngine.shared.currentState()
         lastVenueName = state.lastVenue
+        DiagnosticLog.shared.append(
+            category: "location",
+            message: "Bootstrap presence engineRunning=\(state.isRunning) lastVenue=\(state.lastVenue ?? "nil")"
+        )
+    }
+
+    /// Returns `true` if `operation` did not finish within `seconds`.
+    private func withTimeout(seconds: TimeInterval, operation: @escaping @MainActor () async -> Void) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask { @MainActor in
+                await operation()
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return true
+            }
+            let first = await group.next() ?? true
+            group.cancelAll()
+            return first
+        }
     }
 
     /// Lightweight headcount refresh after our own upsert/deactivate (avoids full catalog round-trip).
@@ -172,7 +253,21 @@ final class AppModel: ObservableObject {
 
     func refreshCatalog() async {
         isRefreshing = true
-        defer { isRefreshing = false }
+        let t0 = CFAbsoluteTimeGetCurrent()
+        DiagnosticLog.shared.append(category: "system", message: "refreshCatalog begin")
+        defer {
+            isRefreshing = false
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: String(
+                    format: "refreshCatalog end elapsed=%.2fs venues=%d listings=%d geos=%d",
+                    CFAbsoluteTimeGetCurrent() - t0,
+                    venues.count,
+                    listings.count,
+                    geographies.count
+                )
+            )
+        }
         let includeTest = DevTestMode.isUIEnabled || TestModeStore.shared.useMockCheckIns
         do {
             try await CatalogStore.shared.refresh(includeTest: includeTest)

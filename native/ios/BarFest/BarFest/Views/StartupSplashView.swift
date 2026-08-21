@@ -6,7 +6,7 @@ struct StartupSplashView: View {
     let isBootstrapComplete: Bool
     let onFinished: () -> Void
 
-    private enum Phase {
+    private enum Phase: String {
         case waiting
         case popping
         case vanishing
@@ -23,6 +23,8 @@ struct StartupSplashView: View {
     @State private var logoOpacity: Double = 1
     @State private var backdropOpacity: Double = 1
     @State private var minimumElapsed = false
+    @State private var appearedAt = Date()
+    @State private var copyFlash: String?
 
     var body: some View {
         ZStack {
@@ -38,12 +40,49 @@ struct StartupSplashView: View {
                     .scaleEffect(logoScale)
                     .opacity(logoOpacity)
             }
+
+            if DevTestMode.isUIEnabled, phase == .waiting {
+                VStack {
+                    Spacer()
+                    if let copyFlash {
+                        Text(copyFlash)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.cyan)
+                            .padding(.bottom, 8)
+                    }
+                    Button {
+                        copyDiagnosticLog()
+                    } label: {
+                        Label("Copy Log", systemImage: "doc.on.doc")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.18))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 36)
+                }
+            }
         }
         .task { await runMinimumTimer() }
+        .task { await splashWatchdog() }
         .onChange(of: isBootstrapComplete) { _, complete in
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Splash bootstrapComplete=\(complete) phase=\(phase.rawValue) minElapsed=\(minimumElapsed) waited=\(elapsedLabel())"
+            )
             if complete { tryBeginExit() }
         }
         .onAppear {
+            appearedAt = Date()
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Splash appear bootstrapComplete=\(isBootstrapComplete) testUI=\(DevTestMode.isUIEnabled)"
+            )
             if isBootstrapComplete { tryBeginExit() }
         }
     }
@@ -63,10 +102,59 @@ struct StartupSplashView: View {
         }
     }
 
+    private func elapsedLabel() -> String {
+        String(format: "%.2fs", Date().timeIntervalSince(appearedAt))
+    }
+
+    private func copyDiagnosticLog() {
+        let text = DiagnosticLog.shared.exportText()
+        UIPasteboard.general.string = text.isEmpty ? "(no log entries yet)" : text
+        let count = DiagnosticLog.shared.entries.count
+        copyFlash = "Copied \(count) log\(count == 1 ? "" : "s")"
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Splash Copy Log tapped entries=\(count) waited=\(elapsedLabel()) bootstrapComplete=\(isBootstrapComplete) phase=\(phase.rawValue)"
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            if copyFlash?.hasPrefix("Copied") == true { copyFlash = nil }
+        }
+    }
+
     private func runMinimumTimer() async {
         try? await Task.sleep(nanoseconds: UInt64(minimumVisibleSeconds * 1_000_000_000))
         minimumElapsed = true
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Splash minimumVisible elapsed bootstrapComplete=\(isBootstrapComplete) phase=\(phase.rawValue)"
+        )
         tryBeginExit()
+    }
+
+    /// Heartbeat while splash is stuck waiting — helps diagnose force-kill cold starts.
+    private func splashWatchdog() async {
+        var tick = 0
+        while !Task.isCancelled, phase == .waiting {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard phase == .waiting else { break }
+            tick += 1
+            let waited = Date().timeIntervalSince(appearedAt)
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: """
+                Splash watchdog #\(tick) waited=\(String(format: "%.1fs", waited)) \
+                bootstrapComplete=\(isBootstrapComplete) minElapsed=\(minimumElapsed) \
+                phase=\(phase.rawValue)
+                """,
+                level: waited >= 8 ? "warn" : "info"
+            )
+            if waited >= 20 {
+                DiagnosticLog.shared.append(
+                    category: "error",
+                    message: "Splash still waiting after \(String(format: "%.0fs", waited)) — bootstrap may be hung (network / catalog / presence)",
+                    level: "error"
+                )
+            }
+        }
     }
 
     private func tryBeginExit() {
@@ -75,6 +163,10 @@ struct StartupSplashView: View {
     }
 
     private func playExitAnimation() {
+        DiagnosticLog.shared.append(
+            category: "system",
+            message: "Splash exit animation begin waited=\(elapsedLabel())"
+        )
         phase = .popping
         withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) {
             logoScale = popScale
@@ -90,6 +182,10 @@ struct StartupSplashView: View {
             }
             try? await Task.sleep(nanoseconds: 240_000_000)
             phase = .done
+            DiagnosticLog.shared.append(
+                category: "system",
+                message: "Splash dismissed totalWait=\(elapsedLabel())"
+            )
             onFinished()
         }
     }
