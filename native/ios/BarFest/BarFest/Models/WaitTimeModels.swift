@@ -12,7 +12,10 @@ enum WaitTimeBucket: Int, CaseIterable, Identifiable {
 
     /// How long a report continues to influence aggregation (seconds).
     var influenceSeconds: TimeInterval {
-        max(AppConfig.waitTimeCountingWindowSeconds, TimeInterval(rawValue * 60))
+        max(
+            TimeInterval(AppConfig.waitTimeCountingWindowSeconds),
+            TimeInterval(rawValue * 60)
+        )
     }
 
     var shortLabel: String {
