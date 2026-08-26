@@ -44,4 +44,9 @@ enum AppConfig {
     static let liveLocationCountMaxAgeSeconds: Int = 18 * 60 // 18 minutes
     /// Matches chat RPC freshness window (`create_chat_post`).
     static let liveLocationChatFreshnessSeconds: Int = liveLocationCountMaxAgeSeconds
+
+    /// Reports inside this window count toward the "N reports" threshold.
+    static let waitTimeCountingWindowSeconds: Int = 20 * 60
+    /// Longest influence window (45+ bucket) used when fetching reports.
+    static let waitTimeMaxInfluenceSeconds: Int = 45 * 60
 }

@@ -417,6 +417,8 @@ struct MapScreen: View {
 
                 dealsSection(deals)
 
+                WaitTimeLabel(summary: appModel.waitSummary(for: venue.name))
+
                 Text(count == 0 ? "No Users at This Time" : "\(count) Users")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(count == 0 ? .secondary : .primary)

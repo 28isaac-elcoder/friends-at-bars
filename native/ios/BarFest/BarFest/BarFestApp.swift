@@ -67,6 +67,8 @@ final class AppModel: ObservableObject {
     @Published var initialBootstrapFinished = false
     @Published var lastKnownCoordinate: CLLocationCoordinate2D?
     @Published var manualGeographyId: UUID?
+    @Published private(set) var waitSummaries: [String: WaitTimeSummary] = [:]
+    @Published private(set) var myWaitMinutesByVenue: [String: Int] = [:]
 
     private let locationBridge = LocationBridge()
     private let manualGeographyKey = "barfest_manual_geography_id"
@@ -124,6 +126,81 @@ final class AppModel: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: manualGeographyKey)
         }
+        Task { await refreshWaitTimes() }
+    }
+
+    func waitSummary(for venueName: String) -> WaitTimeSummary {
+        waitSummaries[venueName] ?? .none
+    }
+
+    func myWaitMinutes(for venueName: String) -> Int? {
+        myWaitMinutesByVenue[venueName]
+    }
+
+    func refreshWaitTimes() async {
+        let names = Set(scopedVenues.map(\.name))
+        guard !names.isEmpty, let geoId = resolvedGeography?.id else {
+            waitSummaries = [:]
+            myWaitMinutesByVenue = [:]
+            return
+        }
+
+        var reports: [WaitTimeReport] = []
+        if TestModeStore.shared.useMockCheckIns {
+            reports = TestWaitTimeStore.shared.reports(for: Array(names))
+        } else {
+            do {
+                reports = try await WaitTimeService.fetchReports(geographyId: geoId)
+                    .filter { names.contains($0.venueName) }
+            } catch {
+                DiagnosticLog.shared.append(
+                    category: "location",
+                    message: "wait times fetch failed: \(error.localizedDescription)",
+                    level: "error"
+                )
+            }
+        }
+
+        waitSummaries = WaitTimeAggregator.summariesByVenue(reports: reports)
+        var mine: [String: Int] = [:]
+        for report in reports where report.isMine {
+            mine[report.venueName] = report.minutes
+        }
+        myWaitMinutesByVenue = mine
+    }
+
+    func submitWaitReport(venueName: String, waitMinutes: Int, isMock: Bool = false) async throws {
+        if TestModeStore.shared.useMockCheckIns {
+            TestWaitTimeStore.shared.upsert(venueName: venueName, minutes: waitMinutes)
+            if isMock {
+                try? await WaitTimeService.submitReport(
+                    venueName: venueName,
+                    waitMinutes: waitMinutes,
+                    latitude: nil,
+                    longitude: nil,
+                    isMock: true
+                )
+            }
+            await refreshWaitTimes()
+            return
+        }
+
+        guard let lat = lastKnownCoordinate?.latitude,
+              let lon = lastKnownCoordinate?.longitude else {
+            throw NSError(
+                domain: "WaitTime",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Location required to report wait time"]
+            )
+        }
+        try await WaitTimeService.submitReport(
+            venueName: venueName,
+            waitMinutes: waitMinutes,
+            latitude: lat,
+            longitude: lon,
+            isMock: false
+        )
+        await refreshWaitTimes()
     }
 
     func bootstrap() async {
@@ -193,7 +270,18 @@ final class AppModel: ObservableObject {
             venues: venuesInVisibleGeographies,
             onVenue: { [weak self] name in
                 Task { @MainActor in
+                    let previous = self?.lastVenueName
                     self?.lastVenueName = name
+                    if let name, name != previous {
+                        let reported = self?.myWaitMinutes(for: name) != nil
+                        WaitTimeNotificationManager.notifyCheckInIfNeeded(
+                            venueName: name,
+                            userAlreadyReported: reported
+                        )
+                    }
+                    if name == nil {
+                        WaitTimeNotificationManager.clearVenueTracking()
+                    }
                 }
             },
             onPresenceWrite: { [weak self] action in
@@ -209,6 +297,7 @@ final class AppModel: ObservableObject {
         )
         let state = VenueLiveLocationEngine.shared.currentState()
         lastVenueName = state.lastVenue
+        await refreshWaitTimes()
         DiagnosticLog.shared.append(
             category: "location",
             message: "Bootstrap presence engineRunning=\(state.isRunning) lastVenue=\(state.lastVenue ?? "nil")"
@@ -294,6 +383,7 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             await logCatalogDiagnostics(source: "refresh")
             await logHeadcountSnapshot(source: "refresh")
+            await refreshWaitTimes()
         } catch {
             errorMessage = error.localizedDescription
             venues = await CatalogStore.shared.venues

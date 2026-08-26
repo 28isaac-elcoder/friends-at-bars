@@ -5,6 +5,7 @@ import SwiftUI
 struct VenueBarSheet: View {
     let venue: CatalogVenue
     let listings: [CatalogListing]
+    var waitSummary: WaitTimeSummary = .none
     @Environment(\.dismiss) private var dismiss
     @State private var index = 0
     private let rotateSeconds: TimeInterval = 4
@@ -25,6 +26,7 @@ struct VenueBarSheet: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                    WaitTimeLabel(summary: waitSummary)
                 }
 
                 if listings.isEmpty {

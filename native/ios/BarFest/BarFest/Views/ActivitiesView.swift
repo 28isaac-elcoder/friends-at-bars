@@ -7,6 +7,19 @@ struct ActivitiesView: View {
     @State private var populationSort: PopulationSort = .mostPopulated
     @State private var areaFilter: String?
     @State private var selectedVenue: CatalogVenue?
+    @State private var venueSearch = ""
+    @FocusState private var searchFocused: Bool
+    @State private var showWaitCheckIn = false
+    @State private var dismissedCheckInVenue: String?
+    @State private var showMockWaitReport = false
+    @State private var waitSubmitting = false
+    @State private var waitSubmitError: String?
+
+    private var searchQuery: String {
+        venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool { !searchQuery.isEmpty }
 
     private var priorityDeals: [CatalogListing] {
         appModel.scopedListings
@@ -14,9 +27,14 @@ struct ActivitiesView: View {
             .sorted { $0.priority < $1.priority }
     }
 
-    /// Bars with live attendance only (0 people hidden).
+    /// Default: bars with live attendance only. While searching: include zero-attendance matches.
     private var filteredVenues: [CatalogVenue] {
-        var list = appModel.scopedVenues.filter { appModel.venueCounts[$0.name, default: 0] > 0 }
+        var list = appModel.scopedVenues
+        if isSearching {
+            list = list.filter { $0.name.localizedCaseInsensitiveContains(searchQuery) }
+        } else {
+            list = list.filter { appModel.venueCounts[$0.name, default: 0] > 0 }
+        }
         if let areaFilter {
             list = list.filter { $0.area == areaFilter }
         }
@@ -41,6 +59,7 @@ struct ActivitiesView: View {
 
     var body: some View {
         NavigationStack {
+            ZStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if testMode.useMockCheckIns {
@@ -97,6 +116,7 @@ struct ActivitiesView: View {
                         Spacer(minLength: 8)
                         if showBarAttendance, !filteredVenues.isEmpty {
                             Button {
+                                searchFocused = false
                                 populationSort.toggle()
                             } label: {
                                 Label(populationSort.rawValue, systemImage: "arrow.up.arrow.down")
@@ -112,14 +132,55 @@ struct ActivitiesView: View {
                     }
 
                     if showBarAttendance {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                            TextField("Search bars", text: $venueSearch)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .focused($searchFocused)
+                                .onSubmit { searchFocused = false }
+                            if !venueSearch.isEmpty {
+                                Button {
+                                    venueSearch = ""
+                                    searchFocused = false
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Clear search")
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                        )
+
                         if filteredVenues.isEmpty {
-                            ActivitiesNoActivityEmptyState(areaName: areaFilter)
+                            if isSearching {
+                                ContentUnavailableView(
+                                    "No Bars Found From That Search",
+                                    systemImage: "magnifyingglass",
+                                    description: Text("Try another bar name or area.")
+                                )
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 36)
+                                .padding(.vertical, 24)
+                                .dismissKeyboardOnTap()
+                            } else {
+                                ActivitiesNoActivityEmptyState(areaName: areaFilter)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 36)
+                            }
                         } else {
                             LazyVStack(spacing: 0) {
                                 ForEach(filteredVenues) { venue in
+                                    let count = appModel.venueCounts[venue.name, default: 0]
                                     Button {
+                                        searchFocused = false
                                         selectedVenue = venue
                                     } label: {
                                         HStack {
@@ -130,11 +191,15 @@ struct ActivitiesView: View {
                                                 Text(venue.area)
                                                     .font(.caption2)
                                                     .foregroundStyle(.secondary)
+                                                WaitTimeLabel(summary: appModel.waitSummary(for: venue.name))
                                             }
-                                            Spacer()
-                                            Text("\(appModel.venueCounts[venue.name, default: 0])")
-                                                .font(.body.monospacedDigit().weight(.semibold))
+                                            Spacer(minLength: 8)
+                                            Text(count == 0 ? "No Live Users" : "\(count)")
+                                                .font(count == 0
+                                                      ? .caption.weight(.semibold)
+                                                      : .body.monospacedDigit().weight(.semibold))
                                                 .foregroundStyle(.secondary)
+                                                .multilineTextAlignment(.trailing)
                                             Image(systemName: "chevron.right")
                                                 .font(.caption.weight(.semibold))
                                                 .foregroundStyle(.tertiary)
@@ -151,6 +216,7 @@ struct ActivitiesView: View {
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
                             )
+                            .dismissKeyboardOnTap()
                         }
                     } else {
                         ActivitiesLocationInlineGate()
@@ -158,23 +224,106 @@ struct ActivitiesView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(Color.black.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await reload(fromPullToRefresh: true) }
+
+                if showWaitCheckIn, let venue = appModel.lastVenueName {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                        .onTapGesture { dismissCheckIn(for: venue) }
+                    WaitTimeCheckInPopup(
+                        venueName: venue,
+                        selectedMinutes: appModel.myWaitMinutes(for: venue),
+                        isSubmitting: waitSubmitting,
+                        errorMessage: waitSubmitError,
+                        onSelect: { minutes in
+                            Task { await submitWait(venueName: venue, minutes: minutes) }
+                        },
+                        onDismiss: { dismissCheckIn(for: venue) }
+                    )
+                }
+
+                if testMode.uiEnabled {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button {
+                                showMockWaitReport = true
+                            } label: {
+                                Circle()
+                                    .strokeBorder(Color.red, lineWidth: 2.5)
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Mock wait report")
+                            .padding(.trailing, 16)
+                            .padding(.top, 4)
+                        }
+                        Spacer()
+                    }
+                }
+            }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
             }
             .onChange(of: appModel.resolvedGeography?.id) { _, _ in
                 areaFilter = nil
+                venueSearch = ""
+                searchFocused = false
+                updateCheckInVisibility()
             }
-            .onAppear { locationAuth.refresh() }
+            .onChange(of: appModel.lastVenueName) { old, new in
+                if old != nil && new != old {
+                    dismissedCheckInVenue = nil
+                }
+                updateCheckInVisibility()
+            }
+            .onChange(of: appModel.initialBootstrapFinished) { _, finished in
+                if finished { updateCheckInVisibility() }
+            }
+            .onAppear {
+                locationAuth.refresh()
+                updateCheckInVisibility()
+            }
             .sheet(item: $selectedVenue) { venue in
                 VenueBarSheet(
                     venue: venue,
-                    listings: todaysListings(for: venue)
+                    listings: todaysListings(for: venue),
+                    waitSummary: appModel.waitSummary(for: venue.name)
                 )
                 .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showMockWaitReport) {
+                MockWaitReportSheet()
+                    .environmentObject(appModel)
+            }
+        }
+    }
+
+    private func updateCheckInVisibility() {
+        guard showBarAttendance, let venue = appModel.lastVenueName else {
+            showWaitCheckIn = false
+            return
+        }
+        showWaitCheckIn = dismissedCheckInVenue != venue
+    }
+
+    private func dismissCheckIn(for venue: String) {
+        dismissedCheckInVenue = venue
+        showWaitCheckIn = false
+        waitSubmitError = nil
+    }
+
+    private func submitWait(venueName: String, minutes: Int) async {
+        waitSubmitting = true
+        waitSubmitError = nil
+        defer { waitSubmitting = false }
+        do {
+            try await appModel.submitWaitReport(venueName: venueName, waitMinutes: minutes)
+        } catch {
+            waitSubmitError = error.localizedDescription
         }
     }
 
@@ -202,6 +351,7 @@ struct ActivitiesView: View {
         } else {
             await appModel.refreshCatalog()
         }
+        await appModel.refreshWaitTimes()
     }
 }
 
