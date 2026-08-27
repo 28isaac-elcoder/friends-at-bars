@@ -11,7 +11,6 @@ struct ActivitiesView: View {
     @FocusState private var searchFocused: Bool
     @State private var showWaitCheckIn = false
     @State private var dismissedCheckInVenue: String?
-    @State private var showMockWaitReport = false
     @State private var waitSubmitting = false
     @State private var waitSubmitError: String?
 
@@ -191,7 +190,10 @@ struct ActivitiesView: View {
                                                 Text(venue.area)
                                                     .font(.caption2)
                                                     .foregroundStyle(.secondary)
-                                                WaitTimeLabel(summary: appModel.waitSummary(for: venue.name))
+                                                WaitTimeLabel(
+                                                    summary: appModel.waitSummary(for: venue.name),
+                                                    hidesWhenEmpty: true
+                                                )
                                             }
                                             Spacer(minLength: 8)
                                             Text(count == 0 ? "No Live Users" : "\(count)")
@@ -245,25 +247,6 @@ struct ActivitiesView: View {
                     )
                 }
 
-                if testMode.uiEnabled {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Button {
-                                showMockWaitReport = true
-                            } label: {
-                                Circle()
-                                    .strokeBorder(Color.red, lineWidth: 2.5)
-                                    .frame(width: 28, height: 28)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Mock wait report")
-                            .padding(.trailing, 16)
-                            .padding(.top, 4)
-                        }
-                        Spacer()
-                    }
-                }
             }
             .onChange(of: testMode.useMockCheckIns) { _, _ in
                 Task { await appModel.refreshCatalog(); await reload() }
@@ -294,10 +277,6 @@ struct ActivitiesView: View {
                     waitSummary: appModel.waitSummary(for: venue.name)
                 )
                 .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showMockWaitReport) {
-                MockWaitReportSheet()
-                    .environmentObject(appModel)
             }
         }
     }

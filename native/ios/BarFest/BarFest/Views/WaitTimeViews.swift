@@ -2,13 +2,19 @@ import SwiftUI
 
 struct WaitTimeLabel: View {
     let summary: WaitTimeSummary
+    /// Activities rows stay clean when nobody has reported; detail popups keep the copy.
+    var hidesWhenEmpty = false
 
     var body: some View {
-        Text(summary.displayText)
-            .font(.caption2)
-            .foregroundStyle(summary.mode == .none ? .tertiary : .secondary)
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
+        if summary.mode == .none && hidesWhenEmpty {
+            EmptyView()
+        } else {
+            Text(summary.displayText)
+                .font(.caption2)
+                .foregroundStyle(summary.mode == .none ? .tertiary : .secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
     }
 }
 
@@ -107,110 +113,114 @@ struct WaitTimeCheckInPopup: View {
     }
 }
 
-/// Test Mode: pick any bar and submit a mock wait report.
-struct MockWaitReportSheet: View {
+/// Test Mode: same check-in card users see at a bar, with a bar picker for any mock venue.
+struct MockWaitReportOverlay: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var venueSearch = ""
+    @Binding var isPresented: Bool
     @State private var selectedVenue: CatalogVenue?
-    @State private var selectedMinutes: Int?
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
-    private var searchQuery: String {
-        venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var filteredVenues: [CatalogVenue] {
-        guard !searchQuery.isEmpty else { return appModel.scopedVenues.prefix(20).map { $0 } }
-        return appModel.scopedVenues
-            .filter { $0.name.localizedCaseInsensitiveContains(searchQuery) }
+    private var venues: [CatalogVenue] {
+        appModel.scopedVenues
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                TextField("Search bars", text: $venueSearch)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { dismiss() }
 
-                if let venue = selectedVenue {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(venue.name)
-                            .font(.headline)
-                        Text("Select wait time for mock report")
-                            .font(.caption)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Mock Check In")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.cyan)
+                            .tracking(0.5)
+                        venueMenu
+                        Text("Report your wait time or projected wait")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        WaitTimeBucketPicker(
-                            selectedMinutes: selectedMinutes,
-                            isSubmitting: isSubmitting,
-                            onSelect: { minutes in
-                                selectedMinutes = minutes
-                                Task { await submit(venue: venue, minutes: minutes) }
-                            }
-                        )
-                    }
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(filteredVenues) { venue in
-                                Button {
-                                    selectedVenue = venue
-                                    selectedMinutes = appModel.myWaitMinutes(for: venue.name)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(venue.name)
-                                                .foregroundStyle(.primary)
-                                            Text(venue.area)
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    .padding(.vertical, 10)
-                                }
-                                .buttonStyle(.plain)
-                                Divider().opacity(0.35)
-                            }
+                        if let venue = selectedVenue, appModel.myWaitMinutes(for: venue.name) != nil {
+                            Text("Tap another time to update your report")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
                         }
                     }
+                    Spacer(minLength: 8)
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
                 }
+
+                WaitTimeBucketPicker(
+                    selectedMinutes: selectedVenue.flatMap { appModel.myWaitMinutes(for: $0.name) },
+                    isSubmitting: isSubmitting || selectedVenue == nil,
+                    onSelect: { minutes in
+                        guard let venue = selectedVenue else { return }
+                        Task { await submit(venue: venue, minutes: minutes) }
+                    }
+                )
 
                 if isSubmitting {
-                    ProgressView().frame(maxWidth: .infinity)
-                }
-                if let errorMessage {
-                    Text(errorMessage).font(.caption).foregroundStyle(.red)
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
                 }
 
-                Spacer(minLength: 0)
+                if let errorMessage, !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
-            .padding()
-            .navigationTitle("Mock Wait Report")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if selectedVenue != nil {
-                        Button("Back") {
-                            selectedVenue = nil
-                            selectedMinutes = nil
-                            errorMessage = nil
-                        }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+            )
+            .padding(.horizontal, 20)
+        }
+        .onAppear {
+            if selectedVenue == nil {
+                selectedVenue = venues.first { $0.name == appModel.lastVenueName } ?? venues.first
             }
         }
+    }
+
+    private var venueMenu: some View {
+        Menu {
+            ForEach(venues) { venue in
+                Button {
+                    selectedVenue = venue
+                    errorMessage = nil
+                } label: {
+                    Text(venue.name)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(selectedVenue?.name ?? "Choose a bar")
+                    .font(.title3.bold())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .disabled(isSubmitting)
+    }
+
+    private func dismiss() {
+        isPresented = false
+        errorMessage = nil
     }
 
     private func submit(venue: CatalogVenue, minutes: Int) async {

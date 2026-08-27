@@ -46,6 +46,16 @@ struct RootTabView: View {
     }
 
     var body: some View {
+        ZStack {
+            mainStack
+            if testMode.uiEnabled && testMode.useMockCheckIns && testMode.showMockWaitReport {
+                MockWaitReportOverlay(isPresented: $testMode.showMockWaitReport)
+                    .zIndex(2)
+            }
+        }
+    }
+
+    private var mainStack: some View {
         VStack(spacing: 0) {
             TestModeChrome()
             if selectedTab == .activities || selectedTab == .deals || selectedTab == .chat {
@@ -70,7 +80,13 @@ struct RootTabView: View {
         }
         .animation(.easeInOut(duration: 0.22), value: keyboard.isVisible)
         .preferredColorScheme(.dark)
+        .onChange(of: testMode.useMockCheckIns) { _, enabled in
+            if !enabled { testMode.showMockWaitReport = false }
+        }
         .onChange(of: testMode.uiEnabled) { _, enabled in
+            if !enabled {
+                testMode.showMockWaitReport = false
+            }
             if !enabled, selectedTab == .log {
                 selectedTab = .activities
             }

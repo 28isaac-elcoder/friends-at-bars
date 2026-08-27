@@ -33,6 +33,22 @@ struct TestModeChrome: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
+
+                if testMode.useMockCheckIns {
+                    Button {
+                        testMode.showMockWaitReport = true
+                        DiagnosticLog.shared.append(
+                            category: "system",
+                            message: "Mock wait report card opened"
+                        )
+                    } label: {
+                        Image(systemName: "stopwatch")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.cyan)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Mock wait time report")
+                }
             }
             .padding(.horizontal)
             .padding(.vertical, 6)

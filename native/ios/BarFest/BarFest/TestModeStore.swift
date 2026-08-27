@@ -19,6 +19,9 @@ final class TestModeStore: ObservableObject {
         didSet { UserDefaults.standard.set(simulateLocationAllowed, forKey: Self.locKey) }
     }
 
+    /// Drives the mock wait-time check-in card (session only).
+    @Published var showMockWaitReport = false
+
     var uiEnabled: Bool { DevTestMode.isUIEnabled }
 
     private init() {
