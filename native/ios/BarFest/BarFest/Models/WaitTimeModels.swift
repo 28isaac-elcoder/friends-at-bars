@@ -38,7 +38,7 @@ struct WaitTimeReportRow: Decodable {
     let author_id: String
 }
 
-struct WaitTimeReport {
+struct WaitTimeReport: Codable {
     let venueName: String
     let minutes: Int
     let updatedAt: Date

@@ -6,7 +6,6 @@ struct VenueBarSheet: View {
     let venue: CatalogVenue
     let listings: [CatalogListing]
     var waitSummary: WaitTimeSummary = .none
-    @Environment(\.dismiss) private var dismiss
     @State private var index = 0
     private let rotateSeconds: TimeInterval = 4
 
@@ -73,11 +72,6 @@ struct VenueBarSheet: View {
             }
             .padding()
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
             .onAppear { index = 0 }
             .onChange(of: listings.map(\.id)) { _, _ in index = 0 }
         }

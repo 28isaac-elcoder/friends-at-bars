@@ -6,14 +6,16 @@ struct WaitTimeLabel: View {
     var hidesWhenEmpty = false
 
     var body: some View {
-        if summary.mode == .none && hidesWhenEmpty {
-            EmptyView()
-        } else {
-            Text(summary.displayText)
-                .font(.caption2)
-                .foregroundStyle(summary.mode == .none ? .tertiary : .secondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+        TimelineView(.periodic(from: Date(), by: 60)) { _ in
+            if summary.mode == .none && hidesWhenEmpty {
+                EmptyView()
+            } else {
+                Text(summary.displayText)
+                    .font(.caption2)
+                    .foregroundStyle(summary.mode == .none ? .tertiary : .secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
         }
     }
 }

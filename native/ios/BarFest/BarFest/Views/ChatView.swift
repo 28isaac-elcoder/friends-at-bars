@@ -266,7 +266,9 @@ struct ChatView: View {
                 startChatLocationIfNeeded()
                 if useLocal, !venueOptions.isEmpty {
                     let names = Set(venueOptions.map(\.name))
-                    if !names.contains(localChat.simulatedVenueName) {
+                    // An empty selection represents a geography-only post.
+                    if !localChat.simulatedVenueName.isEmpty
+                        && !names.contains(localChat.simulatedVenueName) {
                         localChat.simulatedVenueName =
                             venueOptions.first(where: { $0.name == "Test Location 1" })?.name
                             ?? venueOptions[0].name
@@ -292,6 +294,10 @@ struct ChatView: View {
                 if useLocal { posts = localChat.feed(sort: sort) }
             }
             .onChange(of: appModel.resolvedGeography?.id) { _, _ in
+                if !localChat.simulatedVenueName.isEmpty
+                    && !venueOptions.contains(where: { $0.name == localChat.simulatedVenueName }) {
+                    localChat.simulatedVenueName = venueOptions.first?.name ?? ""
+                }
                 Task { await load() }
             }
         }
@@ -331,11 +337,6 @@ struct ChatView: View {
                             Text(venueLabel)
                                 .font(.caption)
                                 .foregroundStyle(metaColor)
-                        }
-                        if post.author_id == TestChatStore.otherAuthorId {
-                            Text("other")
-                                .font(.caption2)
-                                .foregroundStyle(.orange)
                         }
                     }
                     Spacer(minLength: 8)
@@ -404,7 +405,9 @@ struct ChatView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Picker("Bar", selection: $localChat.simulatedVenueName) {
-                        Text("(No bar)").tag("")
+                        if let geography = viewedGeography {
+                            Text(geography.name).tag("")
+                        }
                         ForEach(venueOptions) { v in
                             Text("\(v.name)").tag(v.name)
                         }
