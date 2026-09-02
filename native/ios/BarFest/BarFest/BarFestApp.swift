@@ -119,14 +119,36 @@ final class AppModel: ObservableObject {
         )
     }
 
-    func setManualGeography(_ id: UUID?) {
+    func setManualGeography(_ id: UUID?, source: String = "manual") {
+        let previousResolved = resolvedGeography?.name ?? "nil"
         manualGeographyId = id
         if let id {
             UserDefaults.standard.set(id.uuidString, forKey: manualGeographyKey)
         } else {
             UserDefaults.standard.removeObject(forKey: manualGeographyKey)
         }
+        logGeographyChange(source: source, previousResolved: previousResolved)
         Task { await refreshWaitTimes() }
+    }
+
+    private func logGeographyChange(source: String, previousResolved: String) {
+        let resolved = resolvedGeography?.name ?? "nil"
+        let manual = manualGeographyId
+            .flatMap { id in geographies.first(where: { $0.id == id })?.name }
+            ?? "automatic"
+        let gps = gpsGeography?.name ?? "nil"
+        let geoList = geographies.map(\.name).joined(separator: ", ")
+        DiagnosticLog.shared.append(
+            category: "geography",
+            message: """
+            \(source) manual=\(manual) gps=\(gps) resolved \(previousResolved)→\(resolved) \
+            scoped venues=\(scopedVenues.count) listings=\(scopedListings.count) areas=\(scopedAreas.count)
+            """
+        )
+        DiagnosticLog.shared.append(
+            category: "geography",
+            message: "catalog geographies (\(geographies.count)): \(geoList.isEmpty ? "(none)" : geoList)"
+        )
     }
 
     func waitSummary(for venueName: String) -> WaitTimeSummary {
@@ -235,6 +257,12 @@ final class AppModel: ObservableObject {
 
         if let raw = UserDefaults.standard.string(forKey: manualGeographyKey) {
             manualGeographyId = UUID(uuidString: raw)
+            if let id = manualGeographyId {
+                DiagnosticLog.shared.append(
+                    category: "geography",
+                    message: "bootstrap restored manual geography id=\(id.uuidString.prefix(8))…"
+                )
+            }
         }
 
         DiagnosticLog.shared.append(
@@ -260,6 +288,7 @@ final class AppModel: ObservableObject {
                 category: "system",
                 message: "Bootstrap refreshCatalog done t=\(String(format: "%.2fs", CFAbsoluteTimeGetCurrent() - t0)) venues=\(venues.count) listings=\(listings.count)"
             )
+            logGeographyChange(source: "bootstrap", previousResolved: "—")
         }
 
         DiagnosticLog.shared.append(
@@ -291,7 +320,17 @@ final class AppModel: ObservableObject {
             },
             onCoordinate: { [weak self] coord in
                 Task { @MainActor in
-                    self?.lastKnownCoordinate = coord
+                    guard let self else { return }
+                    let previousResolved = self.resolvedGeography?.name
+                    self.lastKnownCoordinate = coord
+                    guard self.manualGeographyId == nil else { return }
+                    let newResolved = self.resolvedGeography?.name
+                    if previousResolved != newResolved {
+                        self.logGeographyChange(
+                            source: "gps",
+                            previousResolved: previousResolved ?? "nil"
+                        )
+                    }
                 }
             }
         )
@@ -365,7 +404,7 @@ final class AppModel: ObservableObject {
             geographies = await CatalogStore.shared.geographies
             areas = await CatalogStore.shared.areas
             if let id = manualGeographyId, !geographies.contains(where: { $0.id == id }) {
-                setManualGeography(nil)
+                setManualGeography(nil, source: "catalog-invalidate")
             }
             let cmsLibrary = await CatalogStore.shared.switchSearchLibrary
             let wordPack = await CatalogStore.shared.wordPack

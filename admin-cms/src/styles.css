@@ -345,6 +345,7 @@ tr.row-selected {
   border-color: #1f3d2b;
 }
 
+.btn-primary,
 .btn-add-deal {
   width: 100%;
   background: #111 !important;
@@ -352,6 +353,10 @@ tr.row-selected {
   border-color: #111 !important;
   font-weight: 600;
   padding: 0.65rem 1rem;
+}
+
+.geo-areas .row-actions .btn-primary {
+  width: auto;
 }
 
 .btn-add-deal:disabled {

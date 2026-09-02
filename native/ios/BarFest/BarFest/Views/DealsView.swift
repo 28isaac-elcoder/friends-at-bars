@@ -2,10 +2,15 @@ import SwiftUI
 
 struct DealsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Binding var searchFocusedForChrome: Bool
     @State private var dayFilter: DayFilter = .today
     @State private var areaFilter: String?
     @State private var venueSearch = ""
     @FocusState private var searchFocused: Bool
+
+    init(searchFocusedForChrome: Binding<Bool> = .constant(false)) {
+        _searchFocusedForChrome = searchFocusedForChrome
+    }
 
     private var searchQuery: String {
         venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -41,30 +46,7 @@ struct DealsView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Menu {
-                        ForEach(DayFilter.allCases) { day in
-                            Button {
-                                dayFilter = day
-                                searchFocused = false
-                            } label: {
-                                HStack {
-                                    Text(day.label)
-                                    if dayFilter == day { Image(systemName: "checkmark") }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text(dayFilter.label)
-                                .font(.title2.bold())
-                            Image(systemName: "chevron.down")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                        }
-                        .foregroundStyle(.primary)
-                    }
-
+                VStack(alignment: .leading, spacing: 10) {
                     HorizontalChipScroll {
                         ForEach(appModel.scopedAreas) { area in
                             AreaFilterChip(
@@ -72,7 +54,6 @@ struct DealsView: View {
                                 accent: area.accentColor,
                                 selected: areaFilter == area.long_name
                             ) {
-                                searchFocused = false
                                 if areaFilter == area.long_name {
                                     areaFilter = nil
                                 } else {
@@ -109,10 +90,12 @@ struct DealsView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.white.opacity(0.08))
                     )
+
+                    dayFilterMenu
                 }
                 .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
 
                 if filteredListings.isEmpty {
                     if !searchQuery.isEmpty {
@@ -192,7 +175,61 @@ struct DealsView: View {
             .onChange(of: appModel.resolvedGeography?.id) { _, _ in
                 areaFilter = nil
             }
+            .onChange(of: searchFocused) { _, focused in
+                searchFocusedForChrome = focused
+            }
+            .onChange(of: searchFocusedForChrome) { _, focused in
+                if searchFocused != focused {
+                    searchFocused = focused
+                }
+            }
         }
+    }
+
+    private func dismissDealsSearch() {
+        searchFocused = false
+        searchFocusedForChrome = false
+        KeyboardObserver.dismiss()
+    }
+
+    private var dayFilterMenu: some View {
+        Group {
+            if searchFocused {
+                Button(action: dismissDealsSearch) {
+                    dayFilterLabel
+                }
+                .buttonStyle(.plain)
+            } else {
+                Menu {
+                    ForEach(DayFilter.allCases) { day in
+                        Button {
+                            dayFilter = day
+                        } label: {
+                            HStack {
+                                Text(day.label)
+                                if dayFilter == day { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                } label: {
+                    dayFilterLabel
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("Day filter, \(dayFilter.label)")
+    }
+
+    private var dayFilterLabel: some View {
+        HStack(spacing: 4) {
+            Text(dayFilter.label)
+                .font(.callout.weight(.bold))
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
     }
 
     private func logDealsDiagnostics(event: String) {

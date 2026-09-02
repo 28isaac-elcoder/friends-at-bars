@@ -36,6 +36,7 @@ struct RootTabView: View {
     @ObservedObject private var keyboard = KeyboardObserver.shared
     @State private var selectedTab: AppTab = .activities
     @State private var shakeTriggers: [AppTab: Int] = [:]
+    @State private var dealsSearchFocused = false
 
     private var visibleTabs: [AppTab] {
         var tabs: [AppTab] = [.activities, .deals, .chat, .map, .games]
@@ -59,12 +60,17 @@ struct RootTabView: View {
         VStack(spacing: 0) {
             TestModeChrome()
             if selectedTab == .activities || selectedTab == .deals || selectedTab == .chat {
-                GeographyBanner()
+                GeographyBanner(
+                    suppressMenuWhileKeyboard: selectedTab == .deals && dealsSearchFocused,
+                    onSuppressTap: { dealsSearchFocused = false }
+                )
             }
             // Custom tabs only — no system TabView/UITabBar (avoids iOS liquid-glass remnant).
             ZStack {
                 tabPage(.activities) { ActivitiesView() }
-                tabPage(.deals) { DealsView() }
+                tabPage(.deals) {
+                    DealsView(searchFocusedForChrome: $dealsSearchFocused)
+                }
                 tabPage(.chat) { ChatView() }
                 tabPage(.map) { MapScreen() }
                 tabPage(.games) { GamesHubView() }

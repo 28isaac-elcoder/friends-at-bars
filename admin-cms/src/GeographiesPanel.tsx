@@ -347,7 +347,9 @@ export function GeographiesPanel({
       <form className="grid" onSubmit={createGeo}>
         <GeographyFields draft={addDraft} onChange={setAddDraft} />
         <label className="full">
-          <button type="submit">Create</button>
+          <button type="submit" className="btn-primary">
+            Create
+          </button>
         </label>
       </form>
 
@@ -488,7 +490,7 @@ export function GeographiesPanel({
             </label>
             <label className="full">
               <div className="row-actions">
-                <button type="submit">
+                <button type="submit" className="btn-primary">
                   {editingAreaId ? "Update area" : "Add area"}
                 </button>
                 {editingAreaId && (
