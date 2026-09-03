@@ -33,6 +33,7 @@ private struct AppRootView: View {
                 StartupSplashView(isBootstrapComplete: appModel.initialBootstrapFinished) {
                     DiagnosticLog.shared.append(category: "system", message: "AppRoot splash overlay removed")
                     showSplash = false
+                    appModel.markSplashDismissed()
                 }
                 .transition(.opacity)
                 .zIndex(1)
@@ -65,6 +66,8 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isRefreshing = false
     @Published var initialBootstrapFinished = false
+    /// True after the cold-start splash overlay is actually gone (not merely bootstrap-complete).
+    @Published private(set) var splashDidDismiss = false
     @Published var lastKnownCoordinate: CLLocationCoordinate2D?
     @Published var manualGeographyId: UUID?
     @Published private(set) var waitSummaries: [String: WaitTimeSummary] = [:]
@@ -117,6 +120,12 @@ final class AppModel: ObservableObject {
             coordinate: lastKnownCoordinate,
             from: geographies
         )
+    }
+
+    func markSplashDismissed() {
+        guard !splashDidDismiss else { return }
+        splashDidDismiss = true
+        DiagnosticLog.shared.append(category: "system", message: "Splash dismissed — UI revealed")
     }
 
     func setManualGeography(_ id: UUID?, source: String = "manual") {

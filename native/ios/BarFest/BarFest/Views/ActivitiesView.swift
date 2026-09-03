@@ -13,6 +13,9 @@ struct ActivitiesView: View {
     @State private var dismissedCheckInVenue: String?
     @State private var waitSubmitting = false
     @State private var waitSubmitError: String?
+    /// After splash, first unreported check-in waits 0.5s so Activities is visible first.
+    @State private var allowCheckInOverlay = false
+    @State private var checkInRevealTask: Task<Void, Never>?
 
     private var searchQuery: String {
         venueSearch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -245,6 +248,9 @@ struct ActivitiesView: View {
                         },
                         onDismiss: { dismissCheckIn(for: venue) }
                     )
+                    .transition(
+                        .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
+                    )
                 }
 
             }
@@ -261,14 +267,24 @@ struct ActivitiesView: View {
                 if old != nil && new != old {
                     dismissedCheckInVenue = nil
                 }
+                if new == nil {
+                    cancelCheckInRevealDelay(unlockOverlay: appModel.splashDidDismiss)
+                }
                 updateCheckInVisibility()
+            }
+            .onChange(of: appModel.splashDidDismiss) { _, dismissed in
+                if dismissed { beginPostSplashCheckInReveal() }
             }
             .onChange(of: appModel.initialBootstrapFinished) { _, finished in
                 if finished { updateCheckInVisibility() }
             }
             .onAppear {
                 locationAuth.refresh()
-                updateCheckInVisibility()
+                if appModel.splashDidDismiss, !allowCheckInOverlay {
+                    beginPostSplashCheckInReveal()
+                } else {
+                    updateCheckInVisibility()
+                }
             }
             .sheet(item: $selectedVenue) { venue in
                 VenueBarSheet(
@@ -286,7 +302,52 @@ struct ActivitiesView: View {
             showWaitCheckIn = false
             return
         }
-        showWaitCheckIn = dismissedCheckInVenue != venue
+        guard dismissedCheckInVenue != venue else {
+            showWaitCheckIn = false
+            return
+        }
+        guard appModel.splashDidDismiss, allowCheckInOverlay else {
+            showWaitCheckIn = false
+            return
+        }
+        withAnimation(.easeOut(duration: 0.28)) {
+            showWaitCheckIn = true
+        }
+    }
+
+    /// After splash, pause so Activities is readable before the first unreported check-in card.
+    private func beginPostSplashCheckInReveal() {
+        let venue = appModel.lastVenueName
+        let shouldDelay = showBarAttendance
+            && venue != nil
+            && dismissedCheckInVenue != venue
+            && venue.map { appModel.myWaitMinutes(for: $0) == nil } == true
+
+        if shouldDelay {
+            showWaitCheckIn = false
+            checkInRevealTask?.cancel()
+            checkInRevealTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                allowCheckInOverlay = true
+                DiagnosticLog.shared.append(
+                    category: "system",
+                    message: "Wait check-in overlay after splash delay venue=\(venue ?? "nil")"
+                )
+                updateCheckInVisibility()
+            }
+        } else {
+            allowCheckInOverlay = true
+            updateCheckInVisibility()
+        }
+    }
+
+    private func cancelCheckInRevealDelay(unlockOverlay: Bool) {
+        checkInRevealTask?.cancel()
+        checkInRevealTask = nil
+        if unlockOverlay {
+            allowCheckInOverlay = true
+        }
     }
 
     private func dismissCheckIn(for venue: String) {
