@@ -44,6 +44,8 @@ export type CatalogVenue = {
   latitude: number;
   longitude: number;
   radius_m: number;
+  /** NW → NE → SE → SW corners as { lat, lng }. */
+  footprint: { lat: number; lng: number }[] | null;
   is_test: boolean;
   is_active: boolean;
   sort_order: number;

@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS catalog_venues (
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
   radius_m INTEGER NOT NULL DEFAULT 100,
+  -- Presence polygon (NW,NE,SE,SW). See catalog_venues_footprint.sql for helpers + backfill.
+  footprint jsonb,
   is_test BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
   sort_order INTEGER NOT NULL DEFAULT 0,

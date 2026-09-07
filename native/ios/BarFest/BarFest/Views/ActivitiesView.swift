@@ -13,6 +13,7 @@ struct ActivitiesView: View {
     @State private var dismissedCheckInVenue: String?
     @State private var waitSubmitting = false
     @State private var waitSubmitError: String?
+    @State private var checkInSelectedVenue: String = ""
     /// After splash, first unreported check-in waits 0.5s so Activities is visible first.
     @State private var allowCheckInOverlay = false
     @State private var checkInRevealTask: Task<Void, Never>?
@@ -234,19 +235,21 @@ struct ActivitiesView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await reload(fromPullToRefresh: true) }
 
-                if showWaitCheckIn, let venue = appModel.lastVenueName {
+                if showWaitCheckIn, !checkInSelectedVenue.isEmpty {
                     Color.black.opacity(0.35)
                         .ignoresSafeArea()
-                        .onTapGesture { dismissCheckIn(for: venue) }
+                        .onTapGesture { dismissCheckIn(for: checkInSelectedVenue) }
                     WaitTimeCheckInPopup(
-                        venueName: venue,
-                        selectedMinutes: appModel.myWaitMinutes(for: venue),
+                        venueNames: checkInVenueOptions,
+                        selectedVenueName: $checkInSelectedVenue,
+                        selectedMinutes: appModel.myWaitMinutes(for: checkInSelectedVenue),
                         isSubmitting: waitSubmitting,
                         errorMessage: waitSubmitError,
                         onSelect: { minutes in
+                            let venue = checkInSelectedVenue
                             Task { await submitWait(venueName: venue, minutes: minutes) }
                         },
-                        onDismiss: { dismissCheckIn(for: venue) }
+                        onDismiss: { dismissCheckIn(for: checkInSelectedVenue) }
                     )
                     .transition(
                         .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
@@ -264,12 +267,23 @@ struct ActivitiesView: View {
                 updateCheckInVisibility()
             }
             .onChange(of: appModel.lastVenueName) { old, new in
-                if old != nil && new != old {
+                if new != old {
                     dismissedCheckInVenue = nil
                 }
                 if new == nil {
                     cancelCheckInRevealDelay(unlockOverlay: appModel.splashDidDismiss)
                 }
+                syncCheckInSelectedVenue()
+                updateCheckInVisibility()
+            }
+            .onChange(of: appModel.proximityVenueNames) { _, names in
+                if names.isEmpty {
+                    dismissedCheckInVenue = nil
+                }
+                syncCheckInSelectedVenue()
+                updateCheckInVisibility()
+            }
+            .onChange(of: appModel.waitPromptEligible) { _, _ in
                 updateCheckInVisibility()
             }
             .onChange(of: appModel.splashDidDismiss) { _, dismissed in
@@ -297,12 +311,50 @@ struct ActivitiesView: View {
         }
     }
 
+    private var checkInVenueOptions: [String] {
+        let prox = appModel.proximityVenueNames
+        if !prox.isEmpty { return prox }
+        if let last = appModel.lastVenueName { return [last] }
+        return []
+    }
+
+    private func syncCheckInSelectedVenue() {
+        let options = checkInVenueOptions
+        if options.isEmpty {
+            checkInSelectedVenue = ""
+            return
+        }
+        if let primary = appModel.lastVenueName, options.contains(primary) {
+            checkInSelectedVenue = primary
+        } else if !options.contains(checkInSelectedVenue) {
+            checkInSelectedVenue = options[0]
+        }
+    }
+
     private func updateCheckInVisibility() {
-        guard showBarAttendance, let venue = appModel.lastVenueName else {
+        syncCheckInSelectedVenue()
+        guard showBarAttendance else {
+            showWaitCheckIn = false
+            return
+        }
+        guard appModel.waitPromptEligible || appModel.lastVenueName != nil else {
+            showWaitCheckIn = false
+            return
+        }
+        // Prefer wait-prompt eligibility (20s in footprint ∪ buffer); also allow
+        // confirmed presence (lastVenueName) once eligible or already written.
+        let venue = checkInSelectedVenue
+        guard !venue.isEmpty else {
+            showWaitCheckIn = false
+            return
+        }
+        guard appModel.waitPromptEligible else {
             showWaitCheckIn = false
             return
         }
         guard dismissedCheckInVenue != venue else {
+            // If multi-venue and user dismissed one, still allow if others remain
+            // and primary changed — treat dismissed as that specific name only.
             showWaitCheckIn = false
             return
         }
@@ -317,8 +369,10 @@ struct ActivitiesView: View {
 
     /// After splash, pause so Activities is readable before the first unreported check-in card.
     private func beginPostSplashCheckInReveal() {
-        let venue = appModel.lastVenueName
+        syncCheckInSelectedVenue()
+        let venue = checkInSelectedVenue.isEmpty ? appModel.lastVenueName : checkInSelectedVenue
         let shouldDelay = showBarAttendance
+            && appModel.waitPromptEligible
             && venue != nil
             && dismissedCheckInVenue != venue
             && venue.map { appModel.myWaitMinutes(for: $0) == nil } == true

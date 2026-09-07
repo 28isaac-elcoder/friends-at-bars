@@ -63,6 +63,14 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
     private var monitoredVenueNames: Set<String> = []
     private var isFlushingQueue = false
 
+    /// Venues whose footprint ∪ 15 m buffer currently contains the user (center-distance sorted).
+    private var proximityCandidates: [String] = []
+    private var proximityPrimary: String?
+    private var proximityZoneEnteredAtMs: Double = 0
+    private var waitPromptEligible = false
+    /// True after we have deactivated because the user left the polygon but is still in the buffer.
+    private var leftPolygonPendingExit = false
+
     private override init() {
         super.init()
         queue.setSpecific(key: Self.engineQueueKey, value: Self.engineQueueToken)
@@ -131,7 +139,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         logPresence(
-            "config venues=\(venues.count) presence=\(Int(venueRadiusM))m exit=\(Int(exitRadiusM))m hardClear=\(Int(hardClearRadiusM))m approach=\(Int(approachRadiusM))m dwell=\(AppConfig.presenceDwellFixCount) sticky=\(stickyVenue ?? "nil")"
+            "config venues=\(venues.count) footprintHalf=\(Int(AppConfig.venueFootprintDefaultHalfMeters))m buffer=\(Int(exitRadiusM))m exitWait=\(Int(AppConfig.presenceExitConfirmSeconds))s approach=\(Int(approachRadiusM))m dwell=\(AppConfig.presenceDwellFixCount) sticky=\(stickyVenue ?? "nil")"
         )
 
         refreshMonitoredRegions(reason: "config")
@@ -447,13 +455,21 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             completeExit(source: "exit-\(source)")
             return
         }
+        // Advance wait-prompt eligibility without needing a fresh GPS sample.
+        if proximityZoneEnteredAtMs > 0, !waitPromptEligible, !proximityCandidates.isEmpty {
+            let now = Date().timeIntervalSince1970 * 1000
+            let elapsed = (now - proximityZoneEnteredAtMs) / 1000
+            if elapsed >= AppConfig.waitPromptProximitySeconds {
+                waitPromptEligible = true
+                publishProximity()
+            }
+        }
         maybeStickyHeartbeat(source: source)
     }
 
     private func maybeStickyHeartbeat(source: String) {
         guard let venue = stickyVenue else { return }
 
-        // Never refresh presence while leaving — that kept far-away users in headcounts.
         let exiting = onEngineQueue { exitCandidateVenue != nil && exitCandidateSinceMs > 0 }
         if exiting {
             logPresence("sticky heartbeat[\(source)] skipped — exit pending")
@@ -466,30 +482,35 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         if let loc = lastKnownLocation {
             let lat = loc.coordinate.latitude
             let lon = loc.coordinate.longitude
-            let dist = distanceToVenue(named: venue, latitude: lat, longitude: lon)
-            if let dist {
-                if dist >= hardClearRadiusM {
-                    logPresence(
-                        "hard clear[\(source)] \(venue) dist=\(Int(dist))m >=\(Int(hardClearRadiusM))m"
-                    )
-                    completeExit(source: "hard-clear-\(source)")
-                    return
-                }
-                if dist >= exitRadiusM {
-                    logPresence(
-                        "sticky heartbeat[\(source)] blocked — \(Int(dist))m outside exit \(Int(exitRadiusM))m"
-                    )
-                    beginExitCandidate(venue: venue, source: "sticky-\(source)")
-                    if shouldCompleteExit() {
-                        completeExit(source: "sticky-\(source)")
-                    }
-                    return
-                }
-                // exit == presence (100m): no separate "outside presence but in exit band" upsert skip
+            guard let edge = distanceToFootprintEdge(named: venue, latitude: lat, longitude: lon) else {
+                return
             }
-            logPresence(
-                "sticky heartbeat[\(source)] venue=\(venue) dist=\(dist.map { "\(Int($0))m" } ?? "?")"
-            )
+            if edge > AppConfig.venueHardClearRadiusMeters {
+                logPresence(
+                    "hard clear[\(source)] \(venue) edge=\(Int(edge))m >\(Int(AppConfig.venueHardClearRadiusMeters))m"
+                )
+                completeExit(source: "hard-clear-\(source)")
+                return
+            }
+            if !isInsideFootprint(named: venue, latitude: lat, longitude: lon) {
+                logPresence(
+                    "sticky heartbeat[\(source)] blocked — outside polygon edge=\(Int(edge))m"
+                )
+                beginExitCandidate(venue: venue, source: "sticky-\(source)")
+                // Headcount only while inside polygon — deactivate write now.
+                if lastWrittenVenue != nil {
+                    enqueueOrSendDeactivate(source: "left-polygon-\(source)")
+                    onEngineQueue {
+                        lastWrittenVenue = nil
+                        lastWriteAtMs = 0
+                    }
+                    leftPolygonPendingExit = true
+                }
+                if shouldCompleteExit() {
+                    completeExit(source: "sticky-\(source)")
+                }
+                return
+            }
             performUpsert(
                 venueName: venue,
                 latitude: lat,
@@ -500,21 +521,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             return
         }
 
-        // No GPS: indoor-tolerant heartbeat at the venue pin (only when not exiting).
-        guard let venueCoords = onEngineQueue({
-            venues.first(where: { $0.name == venue })?.coordinates
-        }), venueCoords.count >= 2 else {
-            logPresence("sticky heartbeat[\(source)] skipped — no coords for \(venue)", level: "warn")
-            return
-        }
-        logPresence("sticky heartbeat[\(source)] venue=\(venue) (no GPS — venue pin)")
-        performUpsert(
-            venueName: venue,
-            latitude: venueCoords[0],
-            longitude: venueCoords[1],
-            source: "sticky-\(source)",
-            venueChanged: false
-        )
+        logPresence("sticky heartbeat[\(source)] skipped — no lastKnownLocation")
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -650,114 +657,242 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
             return
         }
 
-        let nearestFew = nearestVenues(latitude: lat, longitude: lon, limit: 3)
-        guard let nearest = nearestFew.first else {
+        let scored = scoreVenues(latitude: lat, longitude: lon)
+        guard let nearest = scored.first else {
             logPresence("scan[\(source)] no coords on venues", level: "warn")
             return
         }
 
-        updateAccuracyForDistance(nearest.distance)
+        updateAccuracyForDistance(nearest.centerDistance)
 
         let accuracyUsableForExit =
             accuracy > 0 && accuracy <= AppConfig.presenceMaxAccuracyForExitMeters
 
-        // Sticky decisions use distance to the sticky venue, not whichever bar is nearest.
-        if let sticky = stickyVenue {
-            let stickyDist = distanceToVenue(named: sticky, latitude: lat, longitude: lon)
-                ?? nearest.distance
-            let insidePresenceSticky = stickyDist < venueRadiusM
-            let insideExitBandSticky = stickyDist < exitRadiusM
+        let inZone = scored.filter { $0.edgeDistance <= AppConfig.venueExitRadiusMeters }
+        let insidePolygon = inZone.filter(\.inside)
+        updateProximityState(inZone: inZone, nowMs: Date().timeIntervalSince1970 * 1000)
 
-            if insideExitBandSticky {
-                clearExitCandidate()
-                updateAccuracyForDistance(stickyDist)
-                if insidePresenceSticky {
-                    _ = noteDwell(venue: sticky, resetOther: true)
-                }
-                let writeDecision = shouldUpsert(venue: sticky, force: force)
-                if writeDecision.write {
-                    performUpsert(
-                        venueName: sticky,
-                        latitude: lat,
-                        longitude: lon,
-                        source: source,
-                        venueChanged: writeDecision.changed
-                    )
-                }
-                return
-            }
-
-            // Outside exit radius of sticky venue.
-            if !accuracyUsableForExit {
-                logPresence(
-                    "sticky HOLD \(sticky) - GPS +/-\(Int(accuracy))m too coarse to exit (need <=\(Int(AppConfig.presenceMaxAccuracyForExitMeters))m) dist=\(Int(stickyDist))m"
-                )
-                // Do not sticky-heartbeat here: lastKnown may be far and would start/refresh exit incorrectly.
-                return
-            }
-            // Clearly gone: no 90s wait.
-            if stickyDist >= hardClearRadiusM {
-                logPresence(
-                    "hard clear[\(source)] \(sticky) dist=\(Int(stickyDist))m >=\(Int(hardClearRadiusM))m"
-                )
-                completeExit(source: "hard-clear-\(source)")
-            } else {
-                beginExitCandidate(venue: sticky, source: source)
-                if shouldCompleteExit() {
-                    completeExit(source: source)
-                }
-            }
-            // Fall through so a new nearby bar can start dwell after exit completes;
-            // if still sticky, stop here.
-            if stickyVenue != nil { return }
-        }
-
-        let insidePresence = nearest.distance < venueRadiusM
-
-        if insidePresence {
+        // Prefer presence at closest-center venue among those that contain the user.
+        if let present = insidePolygon.first {
             clearExitCandidate()
+            leftPolygonPendingExit = false
             let dwellState = onEngineQueue { () -> (ready: Bool, count: Int) in
-                if dwellVenue != nearest.name {
-                    dwellVenue = nearest.name
+                if dwellVenue != present.name {
+                    dwellVenue = present.name
                     dwellFixCount = 1
                 } else {
                     dwellFixCount += 1
                 }
                 return (dwellFixCount >= AppConfig.presenceDwellFixCount, dwellFixCount)
             }
-            let dwellNeeded = AppConfig.presenceDwellFixCount
             if !dwellState.ready {
                 logPresence(
-                    "dwell \(dwellState.count)/\(dwellNeeded) \(nearest.name) dist=\(Int(nearest.distance))m +/-\(Int(accuracy))m [\(source)]"
+                    "dwell \(dwellState.count)/\(AppConfig.presenceDwellFixCount) \(present.name) edge=\(Int(present.edgeDistance))m +/-\(Int(accuracy))m [\(source)]"
                 )
                 return
             }
 
-            let writeDecision = shouldUpsert(venue: nearest.name, force: force)
+            setSticky(present.name)
+            let writeDecision = shouldUpsert(venue: present.name, force: force)
             if writeDecision.write {
                 performUpsert(
-                    venueName: nearest.name,
+                    venueName: present.name,
                     latitude: lat,
                     longitude: lon,
                     source: source,
                     venueChanged: writeDecision.changed
                 )
             } else {
-                logPresence("presence ok \(nearest.name) - heartbeat not due yet")
+                logPresence("presence ok \(present.name) - heartbeat not due yet")
             }
             return
         }
 
-        // Outside presence, no sticky.
         resetDwell()
-        if nearest.distance < approachRadiusM {
+
+        // Outside all polygons — sticky / buffer handling.
+        if let sticky = stickyVenue {
+            let stickyScore = scored.first(where: { $0.name == sticky })
+            let stickyEdge = stickyScore?.edgeDistance ?? .greatestFiniteMagnitude
+            let stickyInBuffer = stickyEdge <= AppConfig.venueExitRadiusMeters
+
+            if stickyInBuffer {
+                if !accuracyUsableForExit {
+                    logPresence(
+                        "sticky HOLD \(sticky) - GPS +/-\(Int(accuracy))m too coarse to exit (need <=\(Int(AppConfig.presenceMaxAccuracyForExitMeters))m) edge=\(Int(stickyEdge))m"
+                    )
+                    return
+                }
+                // Left polygon but still in 15 m buffer — drop headcount, start 20 s exit timer.
+                if lastWrittenVenue != nil || !leftPolygonPendingExit {
+                    if lastWrittenVenue != nil {
+                        enqueueOrSendDeactivate(source: "left-polygon-\(source)")
+                        onEngineQueue {
+                            lastWrittenVenue = nil
+                            lastWriteAtMs = 0
+                        }
+                    }
+                    leftPolygonPendingExit = true
+                    beginExitCandidate(venue: sticky, source: source)
+                } else {
+                    beginExitCandidate(venue: sticky, source: source)
+                }
+                if shouldCompleteExit() {
+                    completeExit(source: source)
+                }
+                return
+            }
+
+            // Beyond 15 m buffer → hard clear.
+            if !accuracyUsableForExit {
+                logPresence(
+                    "sticky HOLD \(sticky) - GPS +/-\(Int(accuracy))m too coarse for hard clear edge=\(Int(stickyEdge))m"
+                )
+                return
+            }
             logPresence(
-                "approach zone \(nearest.name) dist=\(Int(nearest.distance))m need<\(Int(venueRadiusM))m [\(source)]"
+                "hard clear[\(source)] \(sticky) edge=\(Int(stickyEdge))m >\(Int(AppConfig.venueHardClearRadiusMeters))m"
+            )
+            completeExit(source: "hard-clear-\(source)")
+            return
+        }
+
+        // No sticky: approaching buffer only (wait-prompt proximity already updated).
+        if let near = inZone.first {
+            logPresence(
+                "buffer zone \(near.name) edge=\(Int(near.edgeDistance))m (not inside polygon) [\(source)]"
+            )
+        } else if nearest.centerDistance < approachRadiusM {
+            logPresence(
+                "approach zone \(nearest.name) center=\(Int(nearest.centerDistance))m edge=\(Int(nearest.edgeDistance))m [\(source)]"
             )
         }
     }
 
+    private struct VenueScore {
+        let name: String
+        let centerDistance: Double
+        let edgeDistance: Double
+        let inside: Bool
+    }
+
+    private func scoreVenues(latitude: Double, longitude: Double) -> [VenueScore] {
+        let venuesSnapshot = onEngineQueue { venues }
+        var scored: [VenueScore] = []
+        for venue in venuesSnapshot {
+            guard venue.coordinates.count >= 2 else { continue }
+            let corners = venue.resolvedCorners
+            let inside = VenueFootprintGeometry.contains(
+                latitude: latitude,
+                longitude: longitude,
+                corners: corners
+            )
+            let edge = VenueFootprintGeometry.distanceMetersToEdge(
+                latitude: latitude,
+                longitude: longitude,
+                corners: corners
+            )
+            let center = VenueFootprintGeometry.haversineMeters(
+                lat1: latitude,
+                lon1: longitude,
+                lat2: venue.centerLatitude,
+                lon2: venue.centerLongitude
+            )
+            scored.append(
+                VenueScore(
+                    name: venue.name,
+                    centerDistance: center,
+                    edgeDistance: edge,
+                    inside: inside
+                )
+            )
+        }
+        // Inside first, then closest center (tie-break for multi-venue).
+        return scored.sorted { a, b in
+            if a.inside != b.inside { return a.inside && !b.inside }
+            return a.centerDistance < b.centerDistance
+        }
+    }
+
+    private func updateProximityState(inZone: [VenueScore], nowMs: Double) {
+        let names = inZone.map(\.name)
+        let primary = names.first
+        let previousNames = proximityCandidates
+        let previousPrimary = proximityPrimary
+        let wasEligible = waitPromptEligible
+
+        if names.isEmpty {
+            proximityCandidates = []
+            proximityPrimary = nil
+            proximityZoneEnteredAtMs = 0
+            waitPromptEligible = false
+            if !previousNames.isEmpty || wasEligible {
+                publishProximity()
+            }
+            return
+        }
+
+        if proximityZoneEnteredAtMs == 0 {
+            proximityZoneEnteredAtMs = nowMs
+        }
+        proximityCandidates = names
+        proximityPrimary = primary
+
+        let elapsedSec = (nowMs - proximityZoneEnteredAtMs) / 1000
+        let eligible = elapsedSec >= AppConfig.waitPromptProximitySeconds
+        let changed =
+            names != previousNames
+            || primary != previousPrimary
+            || eligible != wasEligible
+        waitPromptEligible = eligible
+        if changed {
+            publishProximity()
+        }
+    }
+
+    private func publishProximity() {
+        let candidates = proximityCandidates
+        let primary = proximityPrimary
+        let eligible = waitPromptEligible
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.eventDelegate?.engine(
+                self,
+                didUpdateProximity: candidates,
+                primary: primary,
+                waitPromptEligible: eligible
+            )
+        }
+    }
+
+    private func isInsideFootprint(named name: String, latitude: Double, longitude: Double) -> Bool {
+        guard let venue = onEngineQueue({ venues.first(where: { $0.name == name }) }) else {
+            return false
+        }
+        return VenueFootprintGeometry.contains(
+            latitude: latitude,
+            longitude: longitude,
+            corners: venue.resolvedCorners
+        )
+    }
+
+    private func distanceToFootprintEdge(
+        named name: String,
+        latitude: Double,
+        longitude: Double
+    ) -> Double? {
+        guard let venue = onEngineQueue({ venues.first(where: { $0.name == name }) }) else {
+            return nil
+        }
+        return VenueFootprintGeometry.distanceMetersToEdge(
+            latitude: latitude,
+            longitude: longitude,
+            corners: venue.resolvedCorners
+        )
+    }
+
     private func distanceToVenue(named name: String, latitude: Double, longitude: Double) -> Double? {
+        // Center distance — used by geofence ranking helpers.
         let venuesSnapshot = onEngineQueue { venues }
         guard let venue = venuesSnapshot.first(where: { $0.name == name }),
               venue.coordinates.count >= 2
@@ -815,7 +950,7 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         }
         if started {
             logPresence(
-                "exit candidate \(venue) - need \(Int(AppConfig.presenceExitConfirmSeconds))s outside \(Int(exitRadiusM))m [\(source)]"
+                "exit candidate \(venue) - need \(Int(AppConfig.presenceExitConfirmSeconds))s outside polygon (buffer ≤\(Int(AppConfig.venueExitRadiusMeters))m) [\(source)]"
             )
         } else {
             let elapsed = onEngineQueue { (now - exitCandidateSinceMs) / 1000 }
@@ -844,8 +979,15 @@ final class VenueLiveLocationEngine: NSObject, CLLocationManagerDelegate {
         clearSticky(reason: source)
         resetDwell()
         clearExitCandidate()
+        leftPolygonPendingExit = false
         enqueueOrSendDeactivate(source: source)
         applyAccuracyMode(high: false)
+        // Proximity may still include buffer-only venues; re-publish after sticky clear.
+        if proximityCandidates.isEmpty {
+            waitPromptEligible = false
+            proximityZoneEnteredAtMs = 0
+            publishProximity()
+        }
     }
 
     private func setSticky(_ venue: String) {
@@ -1158,4 +1300,10 @@ protocol VenueLiveLocationEngineDelegate: AnyObject {
     func engine(_ engine: VenueLiveLocationEngine, didWrite action: String, venueName: String?)
     func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String)
     func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine)
+    func engine(
+        _ engine: VenueLiveLocationEngine,
+        didUpdateProximity candidates: [String],
+        primary: String?,
+        waitPromptEligible: Bool
+    )
 }

@@ -20,19 +20,24 @@ enum AppConfig {
             ?? "YOUR_PUBLISHABLE_KEY"
     }
 
-    /// Tight radius used to confirm presence (write to Supabase) — "at the bar".
+    /// Tight presence used only as legacy fallback when footprint is missing.
     static let venueRadiusMeters: Double = 100
-    /// Larger OS geofence / approach radius — wakes the app before the tight radius.
+    /// Larger OS geofence / approach radius — wakes the app before the footprint.
     static let venueApproachRadiusMeters: Double = 400
-    /// Outside this distance, sticky exit countdown starts (same as presence for a tight leave).
-    static let venueExitRadiusMeters: Double = 100
-    /// Clearly gone: clear sticky / deactivate immediately (no 90s wait).
-    static let venueHardClearRadiusMeters: Double = 250
-    /// Consecutive inside-presence fixes required before first upsert (dwell).
+    /// Outside this distance from footprint edge, sticky exit countdown starts.
+    /// (Presence itself is polygon containment; buffer is for sticky / wait prompt.)
+    static let venueExitRadiusMeters: Double = 15
+    /// Clearly gone: clear sticky / deactivate immediately (no exit wait).
+    static let venueHardClearRadiusMeters: Double = 15
+    /// Half-side of default footprint square seeded from center (NW/NE/SE/SW).
+    static let venueFootprintDefaultHalfMeters: Double = 10
+    /// Consecutive inside-footprint fixes required before first upsert (dwell).
     static let presenceDwellFixCount: Int = 2
-    /// Seconds continuously outside the exit radius before deactivating sticky presence
-    /// (skipped when past hard-clear radius).
-    static let presenceExitConfirmSeconds: TimeInterval = 90
+    /// Seconds continuously outside the footprint (but still in sticky buffer)
+    /// before clearing sticky / wait eligibility.
+    static let presenceExitConfirmSeconds: TimeInterval = 20
+    /// Continuous seconds inside footprint ∪ sticky buffer before wait-time prompt.
+    static let waitPromptProximitySeconds: TimeInterval = 20
     /// Ignore a GPS sample for exit decisions when horizontalAccuracy is worse than this.
     static let presenceMaxAccuracyForExitMeters: Double = 200
 

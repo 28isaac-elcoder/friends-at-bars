@@ -278,8 +278,50 @@ tr.row-selected {
   background: #eef6f0;
 }
 
-.geo-areas {
-  margin-top: 2rem;
+.footprint-fields {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.footprint-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.footprint-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.footprint-corner {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border: 1px solid #e4ddd2;
+  border-radius: 8px;
+  background: #faf9f7;
+  font-size: 0.8rem;
+}
+
+.footprint-corner > span {
+  font-weight: 700;
+}
+
+.footprint-corner label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+@media (max-width: 720px) {
+  .footprint-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .color-swatch {

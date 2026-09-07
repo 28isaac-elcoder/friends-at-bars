@@ -50,9 +50,10 @@ struct WaitTimeBucketPicker: View {
     }
 }
 
-/// Centered check-in card shown when the user is at a bar (Activities overlay).
+/// Centered check-in card shown when the user is near a bar (Activities overlay).
 struct WaitTimeCheckInPopup: View {
-    let venueName: String
+    let venueNames: [String]
+    @Binding var selectedVenueName: String
     let selectedMinutes: Int?
     let isSubmitting: Bool
     let errorMessage: String?
@@ -67,8 +68,7 @@ struct WaitTimeCheckInPopup: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.accentColor)
                         .tracking(0.5)
-                    Text(venueName)
-                        .font(.title3.bold())
+                    venueTitle
                     Text("Report your wait time or projected wait")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -112,6 +112,39 @@ struct WaitTimeCheckInPopup: View {
                 .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
         )
         .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    private var venueTitle: some View {
+        if venueNames.count > 1 {
+            Menu {
+                ForEach(venueNames, id: \.self) { name in
+                    Button {
+                        selectedVenueName = name
+                    } label: {
+                        HStack {
+                            Text(name)
+                            if name == selectedVenueName {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(selectedVenueName)
+                        .font(.title3.bold())
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Text(selectedVenueName)
+                .font(.title3.bold())
+        }
     }
 }
 

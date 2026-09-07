@@ -2,6 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { CatalogArea, CatalogGeography, CatalogVenue, supabase } from "./supabase";
 import type { MapCoords } from "./MapPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import {
+  DEFAULT_FOOTPRINT_HALF_M,
+  FOOTPRINT_CORNER_LABELS,
+  defaultVenueFootprint,
+  normalizeFootprint,
+  type LatLng,
+} from "./venueFootprint";
 
 type VenueDraft = Omit<CatalogVenue, "id">;
 
@@ -12,6 +19,7 @@ const empty: VenueDraft = {
   latitude: 40.0,
   longitude: -83.01,
   radius_m: 100,
+  footprint: defaultVenueFootprint(40.0, -83.01),
   is_test: false,
   is_active: true,
   sort_order: 0,
@@ -21,6 +29,88 @@ type VenuesPanelProps = {
   seedCoords?: MapCoords | null;
   onSeedConsumed?: () => void;
 };
+
+function FootprintFields({
+  draft,
+  onChange,
+}: {
+  draft: VenueDraft;
+  onChange: (draft: VenueDraft) => void;
+}) {
+  const corners = normalizeFootprint(
+    draft.footprint,
+    draft.latitude,
+    draft.longitude
+  );
+
+  function setCorner(index: number, next: LatLng) {
+    const updated = corners.map((c, i) => (i === index ? next : c));
+    onChange({ ...draft, footprint: updated });
+  }
+
+  return (
+    <div className="full footprint-fields">
+      <div className="footprint-header">
+        <strong>Footprint corners</strong>
+        <span className="muted">
+          NW → NE → SE → SW (presence = inside polygon; sticky ≤15 m)
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              ...draft,
+              footprint: defaultVenueFootprint(
+                draft.latitude,
+                draft.longitude,
+                DEFAULT_FOOTPRINT_HALF_M
+              ),
+            })
+          }
+        >
+          Reset {DEFAULT_FOOTPRINT_HALF_M}m square
+        </button>
+      </div>
+      <div className="footprint-grid">
+        {FOOTPRINT_CORNER_LABELS.map((label, index) => (
+          <div key={label} className="footprint-corner">
+            <span>{label}</span>
+            <label>
+              Lat
+              <input
+                type="number"
+                step="any"
+                value={corners[index]?.lat ?? 0}
+                onChange={(e) =>
+                  setCorner(index, {
+                    lat: Number(e.target.value),
+                    lng: corners[index]?.lng ?? 0,
+                  })
+                }
+                required
+              />
+            </label>
+            <label>
+              Lng
+              <input
+                type="number"
+                step="any"
+                value={corners[index]?.lng ?? 0}
+                onChange={(e) =>
+                  setCorner(index, {
+                    lat: corners[index]?.lat ?? 0,
+                    lng: Number(e.target.value),
+                  })
+                }
+                required
+              />
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function VenueFields({
   draft,
@@ -85,37 +175,41 @@ function VenueFields({
         </select>
       </label>
       <label>
-        Latitude
+        Center latitude
         <input
           type="number"
           step="any"
           value={draft.latitude}
-          onChange={(e) =>
-            onChange({ ...draft, latitude: Number(e.target.value) })
-          }
+          onChange={(e) => {
+            const latitude = Number(e.target.value);
+            onChange({
+              ...draft,
+              latitude,
+              footprint: draft.footprint?.length
+                ? draft.footprint
+                : defaultVenueFootprint(latitude, draft.longitude),
+            });
+          }}
           required
         />
       </label>
       <label>
-        Longitude
+        Center longitude
         <input
           type="number"
           step="any"
           value={draft.longitude}
-          onChange={(e) =>
-            onChange({ ...draft, longitude: Number(e.target.value) })
-          }
+          onChange={(e) => {
+            const longitude = Number(e.target.value);
+            onChange({
+              ...draft,
+              longitude,
+              footprint: draft.footprint?.length
+                ? draft.footprint
+                : defaultVenueFootprint(draft.latitude, longitude),
+            });
+          }}
           required
-        />
-      </label>
-      <label>
-        Radius (m)
-        <input
-          type="number"
-          value={draft.radius_m}
-          onChange={(e) =>
-            onChange({ ...draft, radius_m: Number(e.target.value) })
-          }
         />
       </label>
       <label>
@@ -150,6 +244,7 @@ function VenueFields({
           Test venue
         </span>
       </label>
+      <FootprintFields draft={draft} onChange={onChange} />
     </>
   );
 }
@@ -162,6 +257,7 @@ function venueToDraft(v: CatalogVenue): VenueDraft {
     latitude: v.latitude,
     longitude: v.longitude,
     radius_m: v.radius_m,
+    footprint: normalizeFootprint(v.footprint, v.latitude, v.longitude),
     is_test: v.is_test,
     is_active: v.is_active,
     sort_order: v.sort_order,
@@ -180,6 +276,7 @@ function freshAddDraft(
     ...empty,
     geography_id: def?.id ?? null,
     area: firstArea?.long_name ?? empty.area,
+    footprint: defaultVenueFootprint(empty.latitude, empty.longitude),
   };
 }
 
@@ -243,6 +340,10 @@ export function VenuesPanel({
       ...freshAddDraft(geos, areas),
       latitude: seedCoords.latitude,
       longitude: seedCoords.longitude,
+      footprint: defaultVenueFootprint(
+        seedCoords.latitude,
+        seedCoords.longitude
+      ),
     });
     onSeedConsumed?.();
   }, [seedCoords]); // onSeedConsumed clears seed; omit from deps to avoid loops

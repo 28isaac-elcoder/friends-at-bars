@@ -8,10 +8,61 @@ struct CatalogVenue: Codable, Identifiable, Hashable {
     let latitude: Double
     let longitude: Double
     let radius_m: Int
+    /// Optional NW→NE→SE→SW corners; when missing the app seeds a 10 m square.
+    let footprint: [VenueFootprintCorner]?
     let is_test: Bool
     let is_active: Bool
     let sort_order: Int
     let updated_at: String?
+
+    init(
+        id: UUID,
+        name: String,
+        area: String,
+        geography_id: UUID?,
+        latitude: Double,
+        longitude: Double,
+        radius_m: Int,
+        footprint: [VenueFootprintCorner]?,
+        is_test: Bool,
+        is_active: Bool,
+        sort_order: Int,
+        updated_at: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.area = area
+        self.geography_id = geography_id
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius_m = radius_m
+        self.footprint = footprint
+        self.is_test = is_test
+        self.is_active = is_active
+        self.sort_order = sort_order
+        self.updated_at = updated_at
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        area = try c.decode(String.self, forKey: .area)
+        geography_id = try c.decodeIfPresent(UUID.self, forKey: .geography_id)
+        latitude = try c.decode(Double.self, forKey: .latitude)
+        longitude = try c.decode(Double.self, forKey: .longitude)
+        radius_m = try c.decodeIfPresent(Int.self, forKey: .radius_m) ?? 100
+        footprint = try c.decodeIfPresent([VenueFootprintCorner].self, forKey: .footprint)
+        is_test = try c.decodeIfPresent(Bool.self, forKey: .is_test) ?? false
+        is_active = try c.decodeIfPresent(Bool.self, forKey: .is_active) ?? true
+        sort_order = try c.decodeIfPresent(Int.self, forKey: .sort_order) ?? 0
+        updated_at = try c.decodeIfPresent(String.self, forKey: .updated_at)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, area, geography_id, latitude, longitude, radius_m
+        case footprint, is_test, is_active, sort_order, updated_at
+    }
 }
 
 struct CatalogGeography: Codable, Identifiable, Hashable {

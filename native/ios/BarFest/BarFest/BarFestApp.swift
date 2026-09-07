@@ -63,6 +63,10 @@ final class AppModel: ObservableObject {
     @Published var venueCounts: [String: Int] = [:]
     @Published var wordPackReady = false
     @Published var lastVenueName: String?
+    /// Venues currently in footprint ∪ 15 m buffer (closest center first).
+    @Published private(set) var proximityVenueNames: [String] = []
+    /// True after ~20 s continuously in a proximity zone — drives wait check-in popup.
+    @Published private(set) var waitPromptEligible = false
     @Published var errorMessage: String?
     @Published var isRefreshing = false
     @Published var initialBootstrapFinished = false
@@ -309,7 +313,9 @@ final class AppModel: ObservableObject {
             onVenue: { [weak self] name in
                 Task { @MainActor in
                     let previous = self?.lastVenueName
-                    self?.lastVenueName = name
+                    if let name {
+                        self?.lastVenueName = name
+                    }
                     if let name, name != previous {
                         let reported = self?.myWaitMinutes(for: name) != nil
                         WaitTimeNotificationManager.notifyCheckInIfNeeded(
@@ -317,7 +323,35 @@ final class AppModel: ObservableObject {
                             userAlreadyReported: reported
                         )
                     }
-                    if name == nil {
+                    if name == nil, self?.proximityVenueNames.isEmpty == true {
+                        self?.lastVenueName = nil
+                        WaitTimeNotificationManager.clearVenueTracking()
+                    }
+                }
+            },
+            onProximity: { [weak self] candidates, primary, eligible in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let previousEligible = self.waitPromptEligible
+                    self.proximityVenueNames = candidates
+                    self.waitPromptEligible = eligible
+                    if let primary {
+                        self.lastVenueName = primary
+                    } else if candidates.isEmpty {
+                        self.lastVenueName = nil
+                    }
+                    if eligible, !previousEligible, let primary {
+                        let reported = self.myWaitMinutes(for: primary) != nil
+                        WaitTimeNotificationManager.notifyCheckInIfNeeded(
+                            venueName: primary,
+                            userAlreadyReported: reported
+                        )
+                        DiagnosticLog.shared.append(
+                            category: "location",
+                            message: "wait prompt eligible primary=\(primary) candidates=\(candidates.count)"
+                        )
+                    }
+                    if candidates.isEmpty {
                         WaitTimeNotificationManager.clearVenueTracking()
                     }
                 }
@@ -518,22 +552,34 @@ final class AppModel: ObservableObject {
 @MainActor
 final class LocationBridge: VenueLiveLocationEngineDelegate {
     private var onVenue: ((String?) -> Void)?
+    private var onProximity: (([String], String?, Bool) -> Void)?
     private var onPresenceWrite: ((String) -> Void)?
     private var onCoordinate: ((CLLocationCoordinate2D) -> Void)?
+
+    private static func records(from venues: [CatalogVenue]) -> [VenueRecord] {
+        venues.map { venue in
+            VenueRecord(
+                name: venue.name,
+                area: venue.area,
+                coordinates: [venue.latitude, venue.longitude],
+                footprint: venue.footprintCorners
+            )
+        }
+    }
 
     func start(
         venues: [CatalogVenue],
         onVenue: @escaping (String?) -> Void,
+        onProximity: (([String], String?, Bool) -> Void)? = nil,
         onPresenceWrite: ((String) -> Void)? = nil,
         onCoordinate: ((CLLocationCoordinate2D) -> Void)? = nil
     ) {
         self.onVenue = onVenue
+        self.onProximity = onProximity
         self.onPresenceWrite = onPresenceWrite
         self.onCoordinate = onCoordinate
         do {
-            let records = venues.map {
-                VenueRecord(name: $0.name, area: $0.area, coordinates: [$0.latitude, $0.longitude])
-            }
+            let records = Self.records(from: venues)
             try VenueLiveLocationEngine.shared.applyConfiguration(
                 supabaseUrl: AppConfig.supabaseURL,
                 supabaseAnonKey: AppConfig.supabaseAnonKey,
@@ -548,7 +594,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
             LocationAuthorizationStore.shared.softStartTrackingIfPossible()
             DiagnosticLog.shared.append(
                 category: "location",
-                message: "presence engine start venues=\(records.count) auth=\(LocationAuthorizationStore.shared.status.rawValue) presence=\(Int(AppConfig.venueRadiusMeters))m exit=\(Int(AppConfig.venueExitRadiusMeters))m hardClear=\(Int(AppConfig.venueHardClearRadiusMeters))m approach=\(Int(AppConfig.venueApproachRadiusMeters))m"
+                message: "presence engine start venues=\(records.count) auth=\(LocationAuthorizationStore.shared.status.rawValue) footprintHalf=\(Int(AppConfig.venueFootprintDefaultHalfMeters))m buffer=\(Int(AppConfig.venueExitRadiusMeters))m exitWait=\(Int(AppConfig.presenceExitConfirmSeconds))s approach=\(Int(AppConfig.venueApproachRadiusMeters))m"
             )
         } catch {
             print("LocationBridge start: \(error)")
@@ -561,9 +607,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
     }
 
     func updateVenues(_ venues: [CatalogVenue]) {
-        let records = venues.map {
-            VenueRecord(name: $0.name, area: $0.area, coordinates: [$0.latitude, $0.longitude])
-        }
+        let records = Self.records(from: venues)
         try? VenueLiveLocationEngine.shared.applyConfiguration(
             supabaseUrl: AppConfig.supabaseURL,
             supabaseAnonKey: AppConfig.supabaseAnonKey,
@@ -599,6 +643,17 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
         }
     }
 
+    nonisolated func engine(
+        _ engine: VenueLiveLocationEngine,
+        didUpdateProximity candidates: [String],
+        primary: String?,
+        waitPromptEligible: Bool
+    ) {
+        Task { @MainActor in
+            self.onProximity?(candidates, primary, waitPromptEligible)
+        }
+    }
+
     nonisolated func engine(_ engine: VenueLiveLocationEngine, didFailWrite message: String) {
         Task { @MainActor in
             DiagnosticLog.shared.append(
@@ -612,6 +667,7 @@ final class LocationBridge: VenueLiveLocationEngineDelegate {
     nonisolated func engineDidLoseAuthorization(_ engine: VenueLiveLocationEngine) {
         Task { @MainActor in
             self.onVenue?(nil)
+            self.onProximity?([], nil, false)
             DiagnosticLog.shared.append(
                 category: "location",
                 message: "Lost Always authorization",
